@@ -30,15 +30,23 @@ int main(int argc, char** argv)
         const int balance = pt.get<int>("balance");
 
         // Map for ordering by asc id
-        map<int, DataCenterInfo> dataCenters;
+        map<int, DataCenterConfigInfo> dataCenters;
+        bool wasMaster = false;
         for (pt::ptree::value_type& dataCenter: pt.get_child("data_centers"))
         {
             const int id = dataCenter.second.get<int>("id");
-            dataCenters[id] = DataCenterInfo(
+            const bool isMaster = dataCenter.second.get<bool>("master", false);
+            if (isMaster && wasMaster) {
+                throw std::invalid_argument("Invalid config. Specify only one master client");
+            }
+            if (isMaster) {
+                wasMaster = true;
+            }
+            dataCenters[id] = DataCenterConfigInfo(
                     id,
                     dataCenter.second.get<string>("address"),
                     dataCenter.second.get<int>("port"),
-                    dataCenter.second.get<bool>("master", false)
+                    isMaster
                     );
         }
         if (dataCenters.find(selfId) == dataCenters.end()) {
