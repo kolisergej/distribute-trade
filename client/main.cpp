@@ -17,7 +17,7 @@ int main(int argc, char** argv)
     try
     {
         if (argc != 2) {
-            throw std::invalid_argument("Specify client id");
+            throw std::invalid_argument("Specify self id");
         }
         const int selfId = atoi(argv[1]);
 
@@ -33,15 +33,16 @@ int main(int argc, char** argv)
         map<int, DataCenterInfo> dataCenters;
         for (pt::ptree::value_type& dataCenter: pt.get_child("data_centers"))
         {
-            dataCenters[selfId] = DataCenterInfo(
-                    dataCenter.second.get<int>("id"),
+            const int id = dataCenter.second.get<int>("id");
+            dataCenters[id] = DataCenterInfo(
+                    id,
                     dataCenter.second.get<string>("address"),
                     dataCenter.second.get<int>("port"),
                     dataCenter.second.get<bool>("master", false)
                     );
         }
         if (dataCenters.find(selfId) == dataCenters.end()) {
-            throw std::invalid_argument("Invalid config. Specify correct selfId");
+            throw std::invalid_argument("Invalid config. Specify correct self id");
         }
 
         CDataCenter dataCenter(selfId, std::move(dataCenters), std::move(region), balance, std::move(serverAddress), serverPort);
