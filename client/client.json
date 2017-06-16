@@ -1,0 +1,25 @@
+{
+    "server_address": "localhost",
+    "_comment": "Port equal server_port in server.js",
+    "server_port": "65000",
+    "balance": 100,
+    "region": "nord",
+    "data_centers": [
+        {
+            "id": 1,
+            "address": "localhost",
+            "port": 640001,
+            "master": true
+        },
+        {
+            "id": 2,
+            "address": "localhost",
+            "port": 640002
+        },
+        {
+            "id": 3,
+            "address": "localhost",
+            "port": 64003
+        }
+    ]
+}
