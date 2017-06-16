@@ -6,7 +6,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/foreach.hpp>
 
-#include "common.h"
+#include "Common.h"
 
 namespace pt = boost::property_tree;
 using std::vector;
