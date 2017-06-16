@@ -1,21 +1,25 @@
 #ifndef WORKER_H
 #define WORKER_H
 
-#include <vector>
+#include <map>
 
 #include "Common.h"
 
-using std::vector;
-
+using std::map;
 
 class CDataCenter
 {
 public:
-    CDataCenter(vector<DataCenterInfo>&& dataCenters, string&& region, int balance, bool isMaster);
+    CDataCenter(size_t selfId, map<int, DataCenterInfo>&& dataCenters, string&& region, int balance, string&& serverAddress, size_t serverPort);
 
-    vector<DataCenterInfo> m_dataCenters;
-    string m_region;
+    size_t m_selfId;
+    map<int, DataCenterInfo> m_dataCenters;
+    const string m_region;
     int m_balance;
+
+    const string m_serverAddress;
+    const size_t m_serverPort;
+
     bool m_isMaster;
 };
 

@@ -1,15 +1,16 @@
 #include <iostream>
-#include <vector>
+#include <map>
 #include <exception>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/foreach.hpp>
 
+#include "CDataCenter.h"
 #include "Common.h"
 
 namespace pt = boost::property_tree;
-using std::vector;
+using std::map;
 
 int main(int argc, char** argv)
 {
@@ -18,28 +19,32 @@ int main(int argc, char** argv)
         if (argc != 2) {
             throw std::invalid_argument("Specify client id");
         }
-        const size_t clientId = atoi(argv[1]);
+        const int selfId = atoi(argv[1]);
+
         pt::ptree pt;
         read_json("./client.json", pt);
-        const string serverAddress = pt.get<string>("server_address");
-        const size_t serverPort = pt.get<size_t>("server_port");
-        const int balance = pt.get<int>("balance");
-        const string region = pt.get<string>("region");
 
-        vector<DataCenterInfo> dataCenters;
+        string serverAddress = pt.get<string>("server_address");
+        const size_t serverPort = pt.get<size_t>("server_port");
+        string region = pt.get<string>("region");
+        const int balance = pt.get<int>("balance");
+
+        // Map for ordering by asc id
+        map<int, DataCenterInfo> dataCenters;
         for (pt::ptree::value_type& dataCenter: pt.get_child("data_centers"))
         {
-            const int id = dataCenter.second.get<int>("id");
-            const string address = dataCenter.second.get<string>("address");
-            const int port = dataCenter.second.get<int>("port");
-            const bool isMaster = dataCenter.second.get<bool>("master", false);
-            std::cout << id << " " << serverPort << " " << balance << " " << region << " " << isMaster << std::endl;
-            dataCenters.push_back(DataCenterInfo(id, address, port, isMaster));
+            dataCenters[selfId] = DataCenterInfo(
+                    dataCenter.second.get<int>("id"),
+                    dataCenter.second.get<string>("address"),
+                    dataCenter.second.get<int>("port"),
+                    dataCenter.second.get<bool>("master", false)
+                    );
+        }
+        if (dataCenters.find(selfId) == dataCenters.end()) {
+            throw std::invalid_argument("Invalid config. Specify correct selfId");
         }
 
-        std::cout << serverAddress << " " << serverPort << " " << balance << " " << region << std::endl;
-
-
+        CDataCenter dataCenter(selfId, std::move(dataCenters), std::move(region), balance, std::move(serverAddress), serverPort);
     } catch(const std::exception& ex) {
         std::cout << ex.what() << std::endl;
     }

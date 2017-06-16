@@ -6,9 +6,10 @@
 using std::string;
 
 struct DataCenterInfo {
-    DataCenterInfo(int id, std::string address, size_t port, bool isMaster):
+    DataCenterInfo() {}
+    DataCenterInfo(int id, std::string&& address, size_t port, bool isMaster):
 	m_id(id),
-	m_address(address),
+        m_address(std::move(address)),
 	m_port(port),
 	m_isMaster(isMaster)
     {}
