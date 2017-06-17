@@ -47,16 +47,8 @@ struct DataCenterConfigInfo {
     bool m_isMaster;
 };
 
-struct SharedBuffer
-{
-    boost::shared_array<char> buff;
-    int size;
-    SharedBuffer(size_t size) : buff(new char[size]), size(size)
-    {}
-    boost::asio::mutable_buffers_1 asio_buff() const {
-	return boost::asio::buffer(buff.get(), size);
-    }
-};
+const size_t g_machineCoreCount(thread::hardware_concurrency());
+bool setThreadAfinity();
 
 #endif // COMMON_H
 

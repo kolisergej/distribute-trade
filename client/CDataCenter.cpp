@@ -1,7 +1,6 @@
 #include "CDataCenter.h"
 #include "Connection.h"
 
-using std::thread;
 
 CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenters, string&& region, int balance, string&& serverAddress, size_t serverPort):
     m_selfId(selfId),
@@ -22,10 +21,10 @@ void CDataCenter::start() {
     });
     networkInit(masterDataCenter->first);
 
-    const size_t thread_count = std::thread::hardware_concurrency();
     vector<thread> thread_group;
-    for (size_t i = 0; i < thread_count; ++i) {
+    for (size_t i = 0; i < g_machineCoreCount; ++i) {
         thread_group.push_back(thread([this] {
+            setThreadAfinity();
             m_service.run();
         }));
     }
