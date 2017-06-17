@@ -11,7 +11,8 @@ CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenter
     m_isMaster(m_dataCenters[m_selfId].m_isMaster),
     m_serverEndpoint(boost::asio::ip::address::from_string(serverAddress), serverPort),
     m_acceptor(m_service, network::endpoint(network::v4(), m_dataCenters[m_selfId].m_port)),
-    m_socket(m_service) {
+    m_socket(m_service),
+    m_payloadTimer(m_service) {
 
 }
 
@@ -95,9 +96,16 @@ void CDataCenter::onMasterConnect(const bs::error_code& er) {
 }
 
 void CDataCenter::writeMaster() {
-    m_socket.async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterWrite,
-                                                                  this,
-                                                                  _1));
+    m_payloadTimer.expires_from_now(boost::posix_time::seconds(1));
+    m_payloadTimer.async_wait(std::bind(&CDataCenter::onWriteTimer, this, _1));
+}
+
+void CDataCenter::onWriteTimer(const bs::error_code& er) {
+    if (!er) {
+        m_socket.async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterWrite,
+                                                                        this,
+                                                                        _1));
+    }
 }
 
 void CDataCenter::onMasterWrite(const bs::error_code& er) {

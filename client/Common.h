@@ -9,9 +9,10 @@
 #include <memory>
 #include <functional>
 #include <mutex>
-#include <boost/shared_array.hpp>
 
 #include <boost/asio.hpp>
+#include <boost/shared_array.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
 using std::map;
 using std::mutex;
