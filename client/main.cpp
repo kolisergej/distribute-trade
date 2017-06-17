@@ -1,5 +1,3 @@
-#include <iostream>
-#include <map>
 #include <exception>
 
 #include <boost/property_tree/ptree.hpp>
@@ -10,7 +8,6 @@
 #include "Common.h"
 
 namespace pt = boost::property_tree;
-using std::map;
 
 int main(int argc, char** argv)
 {
@@ -32,14 +29,22 @@ int main(int argc, char** argv)
         // Map for ordering by asc id
         map<int, DataCenterConfigInfo> dataCenters;
         bool wasMaster = false;
-        for (pt::ptree::value_type& dataCenter: pt.get_child("data_centers"))
+        auto childs = pt.get_child("data_centers");
+        if (childs.empty()) {
+            throw std::invalid_argument("Specify client datacenters");
+        }
+        bool wasSelfFound = false;
+        for (pt::ptree::value_type& dataCenter: childs)
         {
             const int id = dataCenter.second.get<int>("id");
             const bool isMaster = dataCenter.second.get<bool>("master", false);
-            if (isMaster && wasMaster) {
-                throw std::invalid_argument("Invalid config. Specify only one master client");
+            if (id == selfId) {
+                wasSelfFound = true;
             }
             if (isMaster) {
+                if (wasMaster) {
+                    throw std::invalid_argument("Invalid config. Specify only one master client");
+                }
                 wasMaster = true;
             }
             dataCenters[id] = DataCenterConfigInfo(
@@ -49,13 +54,22 @@ int main(int argc, char** argv)
                     isMaster
                     );
         }
+        if (!wasSelfFound) {
+            throw std::invalid_argument("Self id wasn't found in data centers");
+        }
+        if (!wasMaster) {
+            dataCenters.begin()->second.m_isMaster = true;
+            cout << "Master client is set for id: " << dataCenters.begin()->second.m_id << endl;
+        }
         if (dataCenters.find(selfId) == dataCenters.end()) {
             throw std::invalid_argument("Invalid config. Specify correct self id");
         }
 
         CDataCenter dataCenter(selfId, std::move(dataCenters), std::move(region), balance, std::move(serverAddress), serverPort);
+        dataCenter.start();
+
     } catch(const std::exception& ex) {
-        std::cout << ex.what() << std::endl;
+        cout << ex.what() << endl;
     }
 
     return 0;
