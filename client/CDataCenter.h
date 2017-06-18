@@ -10,15 +10,24 @@ public:
     CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenters, string&& region, int balance, string&& serverAddress, size_t serverPort);
     void start();
 
+////////////////////////****** UI commands ******////////////////////////
+    void changeBalance(int sum);
+    void makeTrade(int sum);
+
+/////////////////////////////////////////////////////////////////////////
+
 private:
     const int m_selfId;
     map<int, DataCenterConfigInfo> m_dataCenters;
     const string m_region;
-    int m_balance;
+//    Make balance atomic for UI commands
+    std::atomic<int> m_balance;
+
     int m_masterId;
     io_service m_service;
 
     void networkInit();
+
 
 ////////////////////////****** Master part ******////////////////////////
 
@@ -32,6 +41,7 @@ private:
     void onServerReconnect(const bs::error_code& er);
 
 ////////////////////////////////////////////////////////////////////////
+
 
     // in case of master client this socket for server
     // in case of reserved client this socket for master client

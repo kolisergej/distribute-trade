@@ -1,37 +1,38 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <atomic>
+#include <functional>
 #include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
-#include <map>
 #include <vector>
-#include <memory>
-#include <functional>
-#include <mutex>
 
 #include <boost/asio.hpp>
-#include <boost/shared_array.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/shared_array.hpp>
 
-using std::map;
-using std::mutex;
-using std::lock_guard;
-using std::string;
-using std::vector;
-using std::thread;
-using std::weak_ptr;
-using std::shared_ptr;
-using std::placeholders::_1;
-using std::placeholders::_2;
-using std::make_shared;
-using std::make_unique;
 using std::cout;
 using std::endl;
+using std::lock_guard;
+using std::make_shared;
+using std::make_unique;
+using std::map;
+using std::mutex;
+using std::placeholders::_1;
+using std::placeholders::_2;
+using std::shared_ptr;
+using std::string;
+using std::thread;
+using std::vector;
+using std::weak_ptr;
 
-using network = boost::asio::ip::tcp;
-using io_service = boost::asio::io_service;
 namespace bs = boost::system;
+using io_service = boost::asio::io_service;
+using network = boost::asio::ip::tcp;
 
 struct DataCenterConfigInfo {
     DataCenterConfigInfo() {}

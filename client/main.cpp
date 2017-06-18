@@ -68,8 +68,28 @@ int main(int argc, char** argv)
             throw std::invalid_argument("Invalid config. Specify correct self id");
         }
 
+        // Make one thread for our client working
         CDataCenter dataCenter(selfId, std::move(dataCenters), std::move(region), balance, std::move(serverAddress), serverPort);
-        dataCenter.start();
+        thread workerThread([&](){
+            dataCenter.start();
+        });
+        workerThread.detach();
+
+        // And main thread will be for user simulation. For simplify don't validate commands
+        while (true) {
+            string command;
+            int sum;
+            std::cin >> command;
+            std::cin >> sum;
+            if (command == "change") {
+                dataCenter.changeBalance(sum);
+            } else if (command == "trade") {
+                dataCenter.makeTrade(sum);
+            } else {
+                mylog(INFO, "No such command");
+            }
+        }
+
 
     } catch(const std::exception& ex) {
         mylog(ERROR, ex.what());

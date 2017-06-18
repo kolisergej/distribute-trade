@@ -170,3 +170,19 @@ void CDataCenter::connectNextMaster() {
 }
 
 ////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////****** UI commands ******////////////////////////
+    void CDataCenter::changeBalance(int sum) {
+        m_balance.fetch_add(sum);
+        mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
+    }
+
+    void CDataCenter::makeTrade(int sum) {
+        if (m_balance.load(std::memory_order_acquire) < sum) {
+            mylog(INFO, "Your have no enough money");
+            return;
+        }
+    }
+
+/////////////////////////////////////////////////////////////////////////
