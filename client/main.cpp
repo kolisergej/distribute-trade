@@ -21,15 +21,18 @@ int main(int argc, char** argv)
         pt::ptree pt;
         read_json("./client.json", pt);
 
-        string serverAddress = pt.get<string>("server_address");
-        const size_t serverPort = pt.get<size_t>("server_port");
+        const logLevel loggerLevel = static_cast<logLevel>(pt.get<size_t>("logLevel"));
+        setLoggerLevel(loggerLevel);
+
+        string serverAddress = pt.get<string>("serverAddress");
+        const size_t serverPort = pt.get<size_t>("serverPort");
         string region = pt.get<string>("region");
         const int balance = pt.get<int>("balance");
 
         // Map for ordering by asc id
         map<int, DataCenterConfigInfo> dataCenters;
         bool wasMaster = false;
-        auto childs = pt.get_child("data_centers");
+        auto childs = pt.get_child("dataCenters");
         if (childs.empty()) {
             throw std::invalid_argument("Specify client datacenters");
         }
@@ -59,7 +62,7 @@ int main(int argc, char** argv)
         }
         if (!wasMaster) {
             dataCenters.begin()->second.m_isMaster = true;
-            cout << "Master client is set for id: " << dataCenters.begin()->second.m_id << endl;
+            mylog(INFO, "Master client is set for id:", dataCenters.begin()->second.m_id);
         }
         if (dataCenters.find(selfId) == dataCenters.end()) {
             throw std::invalid_argument("Invalid config. Specify correct self id");
@@ -69,7 +72,7 @@ int main(int argc, char** argv)
         dataCenter.start();
 
     } catch(const std::exception& ex) {
-        cout << ex.what() << endl;
+        mylog(ERROR, ex.what());
     }
 
     return 0;

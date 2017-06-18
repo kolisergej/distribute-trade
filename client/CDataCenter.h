@@ -11,39 +11,45 @@ public:
     void start();
 
 private:
-    int m_selfId;
+    const int m_selfId;
     map<int, DataCenterConfigInfo> m_dataCenters;
     const string m_region;
     int m_balance;
-    bool m_isMaster;
+    int m_masterId;
     io_service m_service;
 
-    void networkInit(int master_id);
+    void networkInit();
 
-    // Master client part
+////////////////////////****** Master part ******////////////////////////
+
     network::endpoint m_serverEndpoint;
     network::acceptor m_acceptor;
+    boost::asio::deadline_timer m_serverReconnectTimer;
     vector<weak_ptr<Connection>> m_clients_connection;
     mutex m_mutex;
-
     void handleClientConnection(shared_ptr<Connection> connection, const bs::error_code& er);
     void handleServerConnection(const bs::error_code& er);
-    // Master client part
+    void onServerReconnect(const bs::error_code& er);
 
+////////////////////////////////////////////////////////////////////////
 
     // in case of master client this socket for server
     // in case of reserved client this socket for master client
-    network::socket m_socket;
+    std::unique_ptr<network::socket> m_socket;
 
 
-    // Reserve client part
+////////////////////////****** Reserve part ******////////////////////////
+
     boost::asio::deadline_timer m_payloadTimer;
     void onMasterConnect(const bs::error_code& er);
     void writeMaster();
     void onWriteTimer(const bs::error_code& er);
     void onMasterWrite(const bs::error_code& er);
     void onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered);
-    // Reserve client part
+
+    void connectNextMaster();
+
+////////////////////////////////////////////////////////////////////////
 };
 
 #endif // WORKER_H

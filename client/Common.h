@@ -25,6 +25,7 @@ using std::shared_ptr;
 using std::placeholders::_1;
 using std::placeholders::_2;
 using std::make_shared;
+using std::make_unique;
 using std::cout;
 using std::endl;
 
@@ -49,6 +50,27 @@ struct DataCenterConfigInfo {
 
 const size_t g_machineCoreCount(thread::hardware_concurrency());
 bool setThreadAfinity();
+
+enum logLevel {
+    NOLOG,
+    ERROR,
+    INFO,
+    DEBUG,
+};
+
+// to avoid extern
+logLevel getLoggerLevel();
+
+void setLoggerLevel(logLevel loggerLevel);
+
+void mylog(logLevel loggerLevel);
+template <typename T, typename...Ts>
+void mylog(logLevel loggerLevel, T&& first, Ts&&... rest) {
+    if (getLoggerLevel() >= loggerLevel) {
+        cout << first << " ";
+        mylog(loggerLevel, std::forward<Ts>(rest)...);
+    }
+}
 
 #endif // COMMON_H
 

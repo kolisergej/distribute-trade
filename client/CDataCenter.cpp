@@ -7,19 +7,21 @@ CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenter
     m_dataCenters(std::move(dataCenters)),
     m_region(std::move(region)),
     m_balance(balance),
-    m_isMaster(m_dataCenters[m_selfId].m_isMaster),
+    m_service(),
     m_serverEndpoint(boost::asio::ip::address::from_string(serverAddress), serverPort),
     m_acceptor(m_service, network::endpoint(network::v4(), m_dataCenters[m_selfId].m_port)),
-    m_socket(m_service),
-    m_payloadTimer(m_service) {
-
-}
-
-void CDataCenter::start() {
+    m_serverReconnectTimer(m_service),
+    m_socket(make_unique<network::socket>(m_service)),
+    m_payloadTimer(m_service)
+{
     const auto masterDataCenter = std::find_if(m_dataCenters.begin(), m_dataCenters.end(), [](const auto& pair) {
        return pair.second.m_isMaster;
     });
-    networkInit(masterDataCenter->first);
+    m_masterId = masterDataCenter->first;
+}
+
+void CDataCenter::start() {
+    networkInit();
 
     vector<thread> thread_group;
     for (size_t i = 0; i < g_machineCoreCount; ++i) {
@@ -34,33 +36,34 @@ void CDataCenter::start() {
     }
 }
 
-void CDataCenter::networkInit(int master_id) {
-    cout << "networkInit:: Master id = " << master_id << endl;
-    if (m_isMaster) {
-        cout << "I'm master, listen " << m_dataCenters[m_selfId].m_port << " port" << endl;
+void CDataCenter::networkInit() {
+    mylog(INFO, "master id:", m_masterId);
+    const auto& masterNode = m_dataCenters[m_masterId];
+    if (m_masterId == m_selfId) {
+        mylog(INFO, "I'm master, listen", masterNode.m_port);
         shared_ptr<Connection> connection = Connection::createConnection(m_service);
-        cout << "Before accept clients\n";
         m_acceptor.async_accept(connection->socket(), std::bind(&CDataCenter::handleClientConnection,
                                                                 this,
                                                                 connection,
                                                                 _1));
-//        cout << "Before connect with server\n";
-//        m_socket.async_connect(m_serverEndpoint, std::bind(&CDataCenter::handleServerConnection,
-//                                             this,
-//                                             _1));
+        m_socket->async_connect(m_serverEndpoint, std::bind(&CDataCenter::handleServerConnection,
+                                             this,
+                                             _1));
     } else {
-        const auto masterNode = m_dataCenters[master_id];
-        cout << "I'm reserve, connecting to " << masterNode.m_address << ":" << masterNode.m_port << endl;
-        network::endpoint ep(boost::asio::ip::address::from_string(masterNode.m_address), masterNode.m_port);
-        m_socket.async_connect(ep, std::bind(&CDataCenter::onMasterConnect,
+        mylog(INFO, "I'm reserve, connecting to master", masterNode.m_address, ':', masterNode.m_port);
+        const network::endpoint ep(boost::asio::ip::address::from_string(masterNode.m_address), masterNode.m_port);
+        m_socket->async_connect(ep, std::bind(&CDataCenter::onMasterConnect,
                                              this,
                                              _1));
     }
 }
 
+
+////////////////////////****** Master part ******////////////////////////
+
 void CDataCenter::handleClientConnection(shared_ptr<Connection> connection, const bs::error_code& er) {
     if (!er) {
-        cout << "Handle reserve client connection" << endl;
+        mylog(INFO, "Handle reserve client connection");
         {
             lock_guard<mutex> lock(m_mutex);
             m_clients_connection.push_back(connection);
@@ -71,26 +74,42 @@ void CDataCenter::handleClientConnection(shared_ptr<Connection> connection, cons
                                                                 this,
                                                                 newConnection,
                                                                 _1));
-    } else {
-        cout << "Handle reserve client connection: " << er.message() << endl;
     }
 }
 
 void CDataCenter::handleServerConnection(const bs::error_code& er) {
     if (!er) {
     } else {
-        m_socket.async_connect(m_serverEndpoint, std::bind(&CDataCenter::handleServerConnection,
+        m_socket = make_unique<network::socket>(m_service);
+        m_serverReconnectTimer.expires_from_now(boost::posix_time::seconds(1));
+        m_serverReconnectTimer.async_wait(std::bind(&CDataCenter::onServerReconnect, this, _1));
+    }
+}
+
+void CDataCenter::onServerReconnect(const bs::error_code& er) {
+    if (!er) {
+        m_socket->async_connect(m_serverEndpoint, std::bind(&CDataCenter::handleServerConnection,
                                                            this,
                                                            _1));
     }
 }
 
+////////////////////////////////////////////////////////////////////////
 
+
+
+
+////////////////////////****** Reserve part ******////////////////////////
 
 void CDataCenter::onMasterConnect(const bs::error_code& er) {
     if (!er) {
-        cout << "Connected with master" << endl;
+        mylog(INFO, "Connected with master");
         writeMaster();
+    } else {
+        mylog(ERROR, "Master connection error:", er.message());
+//        If potential next master was down before current master was down,
+//        then just connectNextMaster
+        connectNextMaster();
     }
 }
 
@@ -101,33 +120,53 @@ void CDataCenter::writeMaster() {
 
 void CDataCenter::onWriteTimer(const bs::error_code& er) {
     if (!er) {
-        m_socket.async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterWrite,
+        m_socket->async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterWrite,
                                                                         this,
                                                                         _1));
     }
 }
 
 void CDataCenter::onMasterWrite(const bs::error_code& er) {
-    cout << "onMasterWrite: " << er.message() << endl;
+    mylog(DEBUG, "onMasterWrite:", er.message());
     if (!er) {
         shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
-        async_read_until(m_socket, *(buffer.get()), '\n', std::bind(&CDataCenter::onMasterRead,
+        async_read_until(*(m_socket.get()), *(buffer.get()), '\n', std::bind(&CDataCenter::onMasterRead,
                                                                     this,
                                                                     buffer,
                                                                     _1,
                                                                     _2));
+    } else {
+        // Assume master was down. Don't check concrete error codes
+        connectNextMaster();
     }
 }
 
 void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered) {
-    cout << "onMasterRead: " << er.message() << endl;
+    mylog(DEBUG, "onMasterRead:", er.message());
     if (!er) {
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytes_transfered);
         const string payload("payload\n");
-        cout << "Received from master: " << message << endl;
+        mylog(DEBUG, "Received from master:", message);
         if (message == payload) {
             writeMaster();
         }
+    } else {
+        // Assume master was down. Don't check concrety error codes
+        connectNextMaster();
     }
 }
+
+void CDataCenter::connectNextMaster() {
+    mylog(ERROR, "Master was down.");
+    m_dataCenters.erase(m_masterId);
+    for (auto it = m_dataCenters.begin(); it != m_dataCenters.end(); ++it) {
+        mylog(DEBUG, "Map:", it->first);
+    }
+    m_socket = make_unique<network::socket>(m_service);
+    m_masterId = m_dataCenters.begin()->first;
+
+    networkInit();
+}
+
+////////////////////////////////////////////////////////////////////////
