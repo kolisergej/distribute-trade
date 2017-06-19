@@ -160,9 +160,9 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
             if (command == "changeBalance") {
                 m_balance.fetch_add(sum);
                 mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
+                writeMaster();
             } else {
                 mylog(INFO, "Unknown command");
-                writeMaster();
             }
         }
     } else {
@@ -189,6 +189,7 @@ void CDataCenter::connectNextMaster() {
 ////////////////////////****** UI commands ******////////////////////////
     void CDataCenter::changeBalance(int sum) {
         m_balance.fetch_add(sum);
+        string setBalanceCommand("setBalance " + std::to_string(sum));
         {
             lock_guard<mutex> lock(m_connectionMutex);
             auto removeExpiredConnections = std::remove_if(m_clientsConnection.begin(), m_clientsConnection.end(), [](auto& connection) {
@@ -197,7 +198,6 @@ void CDataCenter::connectNextMaster() {
             mylog(DEBUG, "Removing", std::distance(m_clientsConnection.end(), removeExpiredConnections), "connections");
             m_clientsConnection.erase(removeExpiredConnections, m_clientsConnection.end());
             for (auto& clientConnection: m_clientsConnection) {
-                string setBalanceCommand("setBalance " + std::to_string(sum));
                 std::shared_ptr<Connection> strongConnection = clientConnection.lock();
                 // Ensure connection is valid, because in another thread it can be disconnected
                 if (strongConnection) {
