@@ -26,8 +26,17 @@ void Connection::onClientRead(shared_ptr<boost::asio::streambuf> buffer, const b
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytes_transfered);
 
-        // TODO if queue not empty -> send command. (setBalance, make_trade)
-        // else payload
+        {
+            lock_guard<mutex> lock(m_commandsMutex);
+            while(!m_commandsForReserve.empty()) {
+                const string command = m_commandsForReserve.front();
+                mylog(DEBUG, "Sending", command, "to reserve client");
+                m_socket.async_send(boost::asio::buffer(command), bind(&Connection::onClientCommandWrite,
+                                                                              shared_from_this(),
+                                                                              _1));
+                m_commandsForReserve.pop();
+            }
+        }
         mylog(DEBUG, "Received from client:", message);
         const string payload("payload\n");
         if (message == payload) {
@@ -50,6 +59,13 @@ void Connection::onClientPayloadWrite(const bs::error_code& er) {
     }
 }
 
+void Connection::onClientCommandWrite(const bs::error_code& er) {
+    mylog(DEBUG, "onClientCommandWrite", er.message());
+    if (er) {
+      mylog(ERROR, "Client down:", er.message());
+    }
+}
+
 boost::asio::ip::tcp::socket& Connection::socket()
 {
     return m_socket;
@@ -61,7 +77,7 @@ Connection::Connection(io_service& service):
 
 }
 
-void Connection::sendCommand(string&& command) {
+void Connection::sendCommandToReserve(const string& command) {
     lock_guard<mutex> lock(m_commandsMutex);
-    m_commands.push(std::move(command));
+    m_commandsForReserve.push(command);
 }

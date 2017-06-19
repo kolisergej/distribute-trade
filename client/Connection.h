@@ -9,18 +9,19 @@ public:
 
     void start();
     network::socket& socket();
-    void sendCommand(string&& command);
+    void sendCommandToReserve(const string& command);
 
 private:
     void read();
     void onClientRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered);
     void onClientPayloadWrite(const bs::error_code& er);
+    void onClientCommandWrite(const bs::error_code& er);
 
     Connection(io_service& service);
     network::socket m_socket;
 
-    queue<string> m_commands;
     mutex m_commandsMutex;
+    queue<string> m_commandsForReserve;
 };
 
 #endif // CONNECTION_H
