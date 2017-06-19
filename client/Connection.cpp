@@ -26,6 +26,8 @@ void Connection::onClientRead(shared_ptr<boost::asio::streambuf> buffer, const b
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytes_transfered);
 
+        // TODO if queue not empty -> send command. (setBalance, make_trade)
+        // else payload
         mylog(DEBUG, "Received from client:", message);
         const string payload("payload\n");
         if (message == payload) {
@@ -34,6 +36,8 @@ void Connection::onClientRead(shared_ptr<boost::asio::streambuf> buffer, const b
                                                                           shared_from_this(),
                                                                           _1));
         }
+    } else {
+      mylog(ERROR, "Client down:", er.message());
     }
 }
 
@@ -41,6 +45,8 @@ void Connection::onClientWrite(const bs::error_code& er) {
     mylog(DEBUG, "onClientWrite", er.message());
     if (!er) {
         read();
+    } else {
+      mylog(ERROR, "Client down:", er.message());
     }
 }
 

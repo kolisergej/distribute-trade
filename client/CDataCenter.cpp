@@ -137,6 +137,7 @@ void CDataCenter::onMasterWrite(const bs::error_code& er) {
                                                                     _2));
     } else {
         // Assume master was down. Don't check concrete error codes
+        mylog(ERROR, "Master was down:", er.message());
         connectNextMaster();
     }
 }
@@ -144,6 +145,7 @@ void CDataCenter::onMasterWrite(const bs::error_code& er) {
 void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered) {
     mylog(DEBUG, "onMasterRead:", er.message());
     if (!er) {
+        // TODO If setBalance -> atomic set balance
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytes_transfered);
         const string payload("payload\n");
@@ -153,12 +155,12 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
         }
     } else {
         // Assume master was down. Don't check concrety error codes
+        mylog(ERROR, "Master was down:", er.message());
         connectNextMaster();
     }
 }
 
 void CDataCenter::connectNextMaster() {
-    mylog(ERROR, "Master was down.");
     m_dataCenters.erase(m_masterId);
     for (auto it = m_dataCenters.begin(); it != m_dataCenters.end(); ++it) {
         mylog(DEBUG, "Map:", it->first);
@@ -175,6 +177,8 @@ void CDataCenter::connectNextMaster() {
 ////////////////////////****** UI commands ******////////////////////////
     void CDataCenter::changeBalance(int sum) {
         m_balance.fetch_add(sum);
+        // TODO Send reserved clients
+        // forEach Connection with checking
         mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
     }
 

@@ -71,6 +71,7 @@ int main(int argc, char** argv)
         // Make one thread for our client working
         CDataCenter dataCenter(selfId, std::move(dataCenters), std::move(region), balance, std::move(serverAddress), serverPort);
         thread workerThread([&](){
+            setThreadAfinity();
             dataCenter.start();
         });
         workerThread.detach();
@@ -81,9 +82,9 @@ int main(int argc, char** argv)
             int sum;
             std::cin >> command;
             std::cin >> sum;
-            if (command == "change") {
+            if (command == "change" || command == "c") {
                 dataCenter.changeBalance(sum);
-            } else if (command == "trade") {
+            } else if (command == "trade" || command == "t") {
                 dataCenter.makeTrade(sum);
             } else {
                 mylog(INFO, "No such command");
