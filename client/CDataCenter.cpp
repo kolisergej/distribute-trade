@@ -199,7 +199,10 @@ void CDataCenter::connectNextMaster() {
             for (auto& clientConnection: m_clientsConnection) {
                 string setBalanceCommand("setBalance " + std::to_string(sum));
                 std::shared_ptr<Connection> strongConnection = clientConnection.lock();
-                strongConnection->sendCommand(std::move(setBalanceCommand));
+                // Ensure connection is valid, because in another thread it can be disconnected
+                if (strongConnection) {
+                    strongConnection->sendCommand(std::move(setBalanceCommand));
+                }
             }
         }
         mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
