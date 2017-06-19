@@ -32,7 +32,7 @@ void Connection::onClientRead(shared_ptr<boost::asio::streambuf> buffer, const b
         const string payload("payload\n");
         if (message == payload) {
             mylog(DEBUG, "Sending payload to reserve client");
-            m_socket.async_send(boost::asio::buffer(payload), bind(&Connection::onClientWrite,
+            m_socket.async_send(boost::asio::buffer(payload), bind(&Connection::onClientPayloadWrite,
                                                                           shared_from_this(),
                                                                           _1));
         }
@@ -41,8 +41,8 @@ void Connection::onClientRead(shared_ptr<boost::asio::streambuf> buffer, const b
     }
 }
 
-void Connection::onClientWrite(const bs::error_code& er) {
-    mylog(DEBUG, "onClientWrite", er.message());
+void Connection::onClientPayloadWrite(const bs::error_code& er) {
+    mylog(DEBUG, "onClientPayloadWrite", er.message());
     if (!er) {
         read();
     } else {

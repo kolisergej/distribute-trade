@@ -14,7 +14,7 @@ public:
 private:
     void read();
     void onClientRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered);
-    void onClientWrite(const bs::error_code& er);
+    void onClientPayloadWrite(const bs::error_code& er);
 
     Connection(io_service& service);
     network::socket m_socket;

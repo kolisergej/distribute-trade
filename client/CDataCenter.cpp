@@ -104,7 +104,7 @@ void CDataCenter::onServerReconnect(const bs::error_code& er) {
 void CDataCenter::onMasterConnect(const bs::error_code& er) {
     if (!er) {
         mylog(INFO, "Connected with master");
-        writeMaster();
+        writePayloadToMaster();
     } else {
         mylog(ERROR, "Master connection error:", er.message());
 //        If potential next master was down before current master was down,
@@ -113,21 +113,21 @@ void CDataCenter::onMasterConnect(const bs::error_code& er) {
     }
 }
 
-void CDataCenter::writeMaster() {
+void CDataCenter::writePayloadToMaster() {
     m_payloadTimer.expires_from_now(boost::posix_time::seconds(1));
     m_payloadTimer.async_wait(std::bind(&CDataCenter::onWriteTimer, this, _1));
 }
 
 void CDataCenter::onWriteTimer(const bs::error_code& er) {
     if (!er) {
-        m_socket->async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterWrite,
+        m_socket->async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterPayloadWrite,
                                                                         this,
                                                                         _1));
     }
 }
 
-void CDataCenter::onMasterWrite(const bs::error_code& er) {
-    mylog(DEBUG, "onMasterWrite:", er.message());
+void CDataCenter::onMasterPayloadWrite(const bs::error_code& er) {
+    mylog(DEBUG, "onMasterPayloadWrite:", er.message());
     if (!er) {
         shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
         async_read_until(*(m_socket.get()), *(buffer.get()), '\n', std::bind(&CDataCenter::onMasterRead,
@@ -150,7 +150,7 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
         const string payload("payload\n");
         mylog(DEBUG, "Received from master:", message);
         if (message == payload) {
-            writeMaster();
+            writePayloadToMaster();
         } else {
             istringstream iss(message);
             string command;
@@ -160,7 +160,7 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
             if (command == "changeBalance") {
                 m_balance.fetch_add(sum);
                 mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
-                writeMaster();
+                writePayloadToMaster();
             } else {
                 mylog(INFO, "Unknown command");
             }

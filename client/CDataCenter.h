@@ -52,9 +52,9 @@ private:
 
     boost::asio::deadline_timer m_payloadTimer;
     void onMasterConnect(const bs::error_code& er);
-    void writeMaster();
+    void writePayloadToMaster();
     void onWriteTimer(const bs::error_code& er);
-    void onMasterWrite(const bs::error_code& er);
+    void onMasterPayloadWrite(const bs::error_code& er);
     void onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered);
 
     void connectNextMaster();
