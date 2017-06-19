@@ -65,8 +65,8 @@ void CDataCenter::handleClientConnection(shared_ptr<Connection> connection, cons
     if (!er) {
         mylog(INFO, "Handle reserve client connection");
         {
-            lock_guard<mutex> lock(m_mutex);
-            m_clients_connection.push_back(connection);
+            lock_guard<mutex> lock(m_connectionMutex);
+            m_clientsConnection.push_back(connection);
         }
         connection->start();
         shared_ptr<Connection> newConnection = Connection::createConnection(m_service);
@@ -177,8 +177,15 @@ void CDataCenter::connectNextMaster() {
 ////////////////////////****** UI commands ******////////////////////////
     void CDataCenter::changeBalance(int sum) {
         m_balance.fetch_add(sum);
-        // TODO Send reserved clients
-        // forEach Connection with checking
+        {
+            lock_guard<mutex> lock(m_connectionMutex);
+            auto removeExpiredConnections = std::remove_if(m_clientsConnection.begin(), m_clientsConnection.end(), [](auto& connection) {
+                return connection.expired();
+            });
+            mylog(DEBUG, "Removing", std::distance(m_clientsConnection.end(), removeExpiredConnections), "connections");
+            m_clientsConnection.erase(removeExpiredConnections, m_clientsConnection.end());
+            // TODO Send reserved clients
+        }
         mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
     }
 

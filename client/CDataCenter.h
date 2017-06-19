@@ -34,8 +34,8 @@ private:
     network::endpoint m_serverEndpoint;
     network::acceptor m_acceptor;
     boost::asio::deadline_timer m_serverReconnectTimer;
-    vector<weak_ptr<Connection>> m_clients_connection;
-    mutex m_mutex;
+    vector<weak_ptr<Connection>> m_clientsConnection;
+    mutex m_connectionMutex;
     void handleClientConnection(shared_ptr<Connection> connection, const bs::error_code& er);
     void handleServerConnection(const bs::error_code& er);
     void onServerReconnect(const bs::error_code& er);
