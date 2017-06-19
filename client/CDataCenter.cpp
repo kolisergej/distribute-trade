@@ -145,13 +145,25 @@ void CDataCenter::onMasterWrite(const bs::error_code& er) {
 void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered) {
     mylog(DEBUG, "onMasterRead:", er.message());
     if (!er) {
-        // TODO If setBalance -> atomic set balance
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytes_transfered);
         const string payload("payload\n");
         mylog(DEBUG, "Received from master:", message);
         if (message == payload) {
             writeMaster();
+        } else {
+            istringstream iss(message);
+            string command;
+            int sum;
+            iss >> command;
+            iss >> sum;
+            if (command == "changeBalance") {
+                m_balance.fetch_add(sum);
+                mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
+            } else {
+                mylog(INFO, "Unknown command");
+                writeMaster();
+            }
         }
     } else {
         // Assume master was down. Don't check concrety error codes
@@ -184,7 +196,11 @@ void CDataCenter::connectNextMaster() {
             });
             mylog(DEBUG, "Removing", std::distance(m_clientsConnection.end(), removeExpiredConnections), "connections");
             m_clientsConnection.erase(removeExpiredConnections, m_clientsConnection.end());
-            // TODO Send reserved clients
+            for (auto& clientConnection: m_clientsConnection) {
+                string setBalanceCommand("setBalance " + std::to_string(sum));
+                std::shared_ptr<Connection> strongConnection = clientConnection.lock();
+                strongConnection->sendCommand(std::move(setBalanceCommand));
+            }
         }
         mylog(INFO, "Your current balance:", m_balance.load(std::memory_order_release));
     }

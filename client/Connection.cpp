@@ -61,3 +61,7 @@ Connection::Connection(io_service& service):
 
 }
 
+void Connection::sendCommand(string&& command) {
+    lock_guard<mutex> lock(m_commandsMutex);
+    m_commands.push(std::move(command));
+}

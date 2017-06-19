@@ -9,6 +9,7 @@ public:
 
     void start();
     network::socket& socket();
+    void sendCommand(string&& command);
 
 private:
     void read();
@@ -17,6 +18,9 @@ private:
 
     Connection(io_service& service);
     network::socket m_socket;
+
+    queue<string> m_commands;
+    mutex m_commandsMutex;
 };
 
 #endif // CONNECTION_H

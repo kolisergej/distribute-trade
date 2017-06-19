@@ -82,9 +82,9 @@ int main(int argc, char** argv)
             int sum;
             std::cin >> command;
             std::cin >> sum;
-            if (command == "change" || command == "c") {
+            if (command == "changeBalance" || command == "c") {
                 dataCenter.changeBalance(sum);
-            } else if (command == "trade" || command == "t") {
+            } else if (command == "makeTrade" || command == "m") {
                 dataCenter.makeTrade(sum);
             } else {
                 mylog(INFO, "No such command");

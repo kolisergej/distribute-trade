@@ -7,6 +7,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <queue>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -17,6 +19,7 @@
 
 using std::cout;
 using std::endl;
+using std::istringstream;
 using std::lock_guard;
 using std::make_shared;
 using std::make_unique;
@@ -24,6 +27,7 @@ using std::map;
 using std::mutex;
 using std::placeholders::_1;
 using std::placeholders::_2;
+using std::queue;
 using std::shared_ptr;
 using std::string;
 using std::thread;
