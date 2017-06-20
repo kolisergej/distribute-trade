@@ -1,0 +1,26 @@
+{
+    "logLevel": 2,
+    "serverAddress": "127.0.0.1",
+    "_comment": "Port equal server_port in server.js",
+    "serverPort": 65000,
+    "balance": 100,
+    "region": "nord",
+    "dataCenters": [
+        {
+            "id": 1,
+            "address": "127.0.0.1",
+            "port": 64001,
+            "master": true
+        },
+        {
+            "id": 2,
+            "address": "127.0.0.1",
+            "port": 64002
+        },
+        {
+            "id": 3,
+            "address": "127.0.0.1",
+            "port": 64003
+        }
+    ]
+}
