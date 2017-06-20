@@ -3,7 +3,7 @@
     "serverAddress": "127.0.0.1",
     "_comment": "Port equal server_port in server.js",
     "serverPort": 65000,
-    "balance": 100,
+    "balance": 10000,
     "region": "nord",
     "dataCenters": [
         {

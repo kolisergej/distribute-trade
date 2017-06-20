@@ -34,7 +34,7 @@ int main(int argc, char** argv)
         bool wasMaster = false;
         auto childs = pt.get_child("dataCenters");
         if (childs.empty()) {
-            throw std::invalid_argument("Specify client datacenters");
+            throw std::invalid_argument("Specify datacenters");
         }
         bool wasSelfFound = false;
         for (pt::ptree::value_type& dataCenter: childs)
@@ -46,7 +46,7 @@ int main(int argc, char** argv)
             }
             if (isMaster) {
                 if (wasMaster) {
-                    throw std::invalid_argument("Invalid config. Specify only one master client");
+                    throw std::invalid_argument("Invalid config. Specify only one master datacenter");
                 }
                 wasMaster = true;
             }
@@ -62,13 +62,13 @@ int main(int argc, char** argv)
         }
         if (!wasMaster) {
             dataCenters.begin()->second.m_isMaster = true;
-            mylog(INFO, "Master client is set for id:", dataCenters.begin()->second.m_id);
+            mylog(INFO, "Master dayacenter is set for id:", dataCenters.begin()->second.m_id);
         }
         if (dataCenters.find(selfId) == dataCenters.end()) {
             throw std::invalid_argument("Invalid config. Specify correct self id");
         }
 
-        // Make one thread for our client working
+        // Make one thread for our datacenter working
         CDataCenter dataCenter(selfId, std::move(dataCenters), std::move(region), balance, std::move(serverAddress), serverPort);
         thread workerThread([&](){
             setThreadAfinity();
@@ -83,6 +83,7 @@ int main(int argc, char** argv)
             std::cin >> command;
             std::cin >> sum;
             if (command == "changeBalance" || command == "c") {
+                // For funny debugging. Chitting adding balance
                 dataCenter.changeBalance(sum);
             } else if (command == "makeTrade" || command == "m") {
                 dataCenter.makeTrade(sum);

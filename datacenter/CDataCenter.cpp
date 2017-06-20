@@ -12,6 +12,7 @@ CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenter
     m_serverEndpoint(boost::asio::ip::address::from_string(serverAddress), serverPort),
     m_acceptor(m_service, network::endpoint(network::v4(), m_dataCenters[m_selfId].m_port)),
     m_serverReconnectTimer(m_service),
+    m_datacentersConnectionsCheckTimer(m_service),
     m_socket(make_unique<network::socket>(m_service)),
     m_payloadTimer(m_service)
 {
@@ -41,17 +42,20 @@ void CDataCenter::networkInit() {
     mylog(INFO, "master id:", m_masterId);
     const auto& masterNode = m_dataCenters[m_masterId];
     if (m_masterId == m_selfId) {
-        mylog(INFO, "I'm master, listen", masterNode.m_port);
+        mylog(INFO, "I'm master datacenter, listen", masterNode.m_port);
         shared_ptr<Connection> connection = Connection::createConnection(m_service);
-        m_acceptor.async_accept(connection->socket(), std::bind(&CDataCenter::handleClientConnection,
+        m_acceptor.async_accept(connection->socket(), std::bind(&CDataCenter::handleReserveDatacenterConnection,
                                                                 this,
                                                                 connection,
                                                                 _1));
         m_socket->async_connect(m_serverEndpoint, std::bind(&CDataCenter::handleServerConnection,
                                              this,
                                              _1));
+
+        m_datacentersConnectionsCheckTimer.expires_from_now(boost::posix_time::seconds(1));
+        m_datacentersConnectionsCheckTimer.async_wait(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1));
     } else {
-        mylog(INFO, "I'm reserve, connecting to master", masterNode.m_address, ':', masterNode.m_port);
+        mylog(INFO, "I'm reserve datacenter, connecting to master", masterNode.m_address, ':', masterNode.m_port);
         const network::endpoint ep(boost::asio::ip::address::from_string(masterNode.m_address), masterNode.m_port);
         m_socket->async_connect(ep, std::bind(&CDataCenter::onMasterConnect,
                                              this,
@@ -62,16 +66,16 @@ void CDataCenter::networkInit() {
 
 ////////////////////////****** Master part ******////////////////////////
 
-void CDataCenter::handleClientConnection(shared_ptr<Connection> connection, const bs::error_code& er) {
+void CDataCenter::handleReserveDatacenterConnection(shared_ptr<Connection> connection, const bs::error_code& er) {
     if (!er) {
-        mylog(INFO, "Handle reserve client connection");
+        mylog(INFO, "Handle reserve datacenter connection");
         {
-            lock_guard<mutex> lock(m_clientConnectionsMutex);
-            m_clientsConnection.push_back(connection);
+            lock_guard<mutex> lock(m_datacenterConnectionsMutex);
+            m_datacentersConnection.push_back(connection);
         }
         connection->start();
         shared_ptr<Connection> newConnection = Connection::createConnection(m_service);
-        m_acceptor.async_accept(newConnection->socket(), std::bind(&CDataCenter::handleClientConnection,
+        m_acceptor.async_accept(newConnection->socket(), std::bind(&CDataCenter::handleReserveDatacenterConnection,
                                                                 this,
                                                                 newConnection,
                                                                 _1));
@@ -81,6 +85,8 @@ void CDataCenter::handleClientConnection(shared_ptr<Connection> connection, cons
 void CDataCenter::handleServerConnection(const bs::error_code& er) {
     if (!er) {
         m_serverReconnectTimer.cancel();
+        string initServerMessage("region " + m_region + '\n');
+        sendServerMessage(std::move(initServerMessage));
     } else {
         m_socket = make_unique<network::socket>(m_service);
         m_serverReconnectTimer.expires_from_now(boost::posix_time::seconds(1));
@@ -124,16 +130,16 @@ void CDataCenter::onServerWrite(const bs::error_code& er, string message) {
     }
 }
 
-void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered) {
+void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered) {
     mylog(DEBUG, "onServerRead:", er.message());
     if (!er) {
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
-        const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytes_transfered);
+        const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytesTransfered);
         istringstream iss(message);
         string command;
         iss >> command;
         if (command == "tradeAnswer") {
-            int bookId;
+            size_t bookId;
             bool success;
             iss >> bookId;
             iss >> success;
@@ -143,17 +149,42 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
                     m_balance += 2 * m_bookIdSum[bookId];
                 }
                 m_bookIdSum.erase(bookId);
-                mylog(INFO, "Trade answer.", success ? "Success" : "Failed", "Your current balance:", m_balance);
+                const int bookSum = std::accumulate(std::begin(m_bookIdSum),
+                                                std::end(m_bookIdSum),
+                                                0,
+                                                [] (int value, auto p) { return value + p.second; }
+                );
+                mylog(INFO, "Trade answer:",
+                      success ? "success" : "failed",
+                      "Your current balance:", m_balance, ". In processing:", bookSum);
             }
 
-            sendReserveClientsCommand(message);
-            string ackMessage("processed " + std::to_string(bookId));
+            sendReserveDatacentersCommand(message + '\n');
+            string ackMessage("processed " + std::to_string(bookId) + '\n');
             sendServerMessage(std::move(ackMessage));
         }
     } else {
         m_serverReconnectTimer.cancel();
         m_serverReconnectTimer.expires_from_now(boost::posix_time::seconds(1));
         m_serverReconnectTimer.async_wait(std::bind(&CDataCenter::onServerReconnect, this, _1));
+    }
+}
+
+void CDataCenter::onConnectionsCheckTimer(const bs::error_code& er) {
+    if (!er) {
+        {
+            lock_guard<mutex> lock(m_datacenterConnectionsMutex);
+            auto removeExpiredConnections = std::remove_if(m_datacentersConnection.begin(), m_datacentersConnection.end(), [](auto& connection) {
+                return connection.expired();
+            });
+            auto removed = std::distance(removeExpiredConnections, m_datacentersConnection.end());
+            if (removed > 0) {
+                mylog(INFO, "Removing", removed, "expired connections");
+            }
+            m_datacentersConnection.erase(removeExpiredConnections, m_datacentersConnection.end());
+        }
+        m_datacentersConnectionsCheckTimer.expires_from_now(boost::posix_time::seconds(1));
+        m_datacentersConnectionsCheckTimer.async_wait(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1));
     }
 }
 
@@ -178,10 +209,10 @@ void CDataCenter::onMasterConnect(const bs::error_code& er) {
 
 void CDataCenter::writePayloadToMaster() {
     m_payloadTimer.expires_from_now(boost::posix_time::seconds(1));
-    m_payloadTimer.async_wait(std::bind(&CDataCenter::onWriteTimer, this, _1));
+    m_payloadTimer.async_wait(std::bind(&CDataCenter::onWritePayloadTimer, this, _1));
 }
 
-void CDataCenter::onWriteTimer(const bs::error_code& er) {
+void CDataCenter::onWritePayloadTimer(const bs::error_code& er) {
     if (!er) {
         m_socket->async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterPayloadWrite,
                                                                         this,
@@ -205,11 +236,11 @@ void CDataCenter::onMasterPayloadWrite(const bs::error_code& er) {
     }
 }
 
-void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytes_transfered) {
+void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered) {
     mylog(DEBUG, "onMasterRead:", er.message());
     if (!er) {
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
-        const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytes_transfered);
+        const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytesTransfered);
         mylog(DEBUG, "Received from master:", message);
         if (message == "payload\n") {
             writePayloadToMaster();
@@ -223,22 +254,26 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                 {
                     lock_guard<mutex> lock(m_balanceMutex);
                     m_balance += sum;
-                    mylog(INFO, "Your current balance:", m_balance);
+                    const int bookSum = std::accumulate(std::begin(m_bookIdSum),
+                                                    std::end(m_bookIdSum),
+                                                    0,
+                                                    [] (int value, auto p) { return value + p.second; }
+                    );
+                    mylog(INFO, "Your current balance:", m_balance, ". In processing: ", bookSum);
                 }
                 writePayloadToMaster();
             } else if (command == "book") {
-                int bookId;
                 int sum;
-                iss >> bookId;
+                iss >> m_lastBookId;
                 iss >> sum;
                 {
                     lock_guard<mutex> lock(m_balanceMutex);
-                    m_bookIdSum[bookId] = sum;
-                    mylog(INFO, "During trade operation", sum, "booked");
+                    m_bookIdSum[m_lastBookId] = sum;
+                    mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
                 }
                 writePayloadToMaster();
             } else if (command == "tradeAnswer") {
-                int bookId;
+                size_t bookId;
                 bool success;
                 iss >> bookId;
                 iss >> success;
@@ -248,7 +283,14 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                         m_balance += 2 * m_bookIdSum[bookId];
                     }
                     m_bookIdSum.erase(bookId);
-                    mylog(INFO, "Trade answer.", success ? "Success" : "Failed", "Your current balance:", m_balance);
+                    const int bookSum = std::accumulate(std::begin(m_bookIdSum),
+                                                    std::end(m_bookIdSum),
+                                                    0,
+                                                    [] (int value, auto p) { return value + p.second; }
+                    );
+                    mylog(INFO, "Trade answer:",
+                          success ? "success" : "failed",
+                          "Your current balance:", m_balance, ". In processing: ", bookSum);
                 }
             } else {
                 mylog(INFO, "Unknown command");
@@ -282,9 +324,14 @@ void CDataCenter::connectNextMaster() {
         {
             lock_guard<mutex> lock(m_balanceMutex);
             m_balance += sum;
-            mylog(INFO, "Your current balance:", m_balance);
+            const int bookSum = std::accumulate(std::begin(m_bookIdSum),
+                                            std::end(m_bookIdSum),
+                                            0,
+                                            [] (int value, auto p) { return value + p.second; }
+            );
+            mylog(INFO, "Your current balance:", m_balance, ". In processing:", bookSum);
         }
-        sendReserveClientsCommand(setBalanceCommand);
+        sendReserveDatacentersCommand(setBalanceCommand);
     }
 
     void CDataCenter::makeTrade(int sum) {
@@ -300,22 +347,18 @@ void CDataCenter::connectNextMaster() {
                 return;
             }
         }
-        string makeTradeCommand("makeTrade " + std::to_string(sum));
+        string makeTradeCommand("makeTrade " + std::to_string(sum) + '\n');
         m_bookIdSum[m_lastBookId++] = sum;
-        const string bookBalanceCommand("book " + std::to_string(m_lastBookId) + " " + std::to_string(sum));
-        sendReserveClientsCommand(bookBalanceCommand);
+        mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
+        const string bookBalanceCommand("book " + std::to_string(m_lastBookId) + " " + std::to_string(sum) + '\n');
+        sendReserveDatacentersCommand(bookBalanceCommand);
         sendServerMessage(std::move(makeTradeCommand));
     }
 
-    void CDataCenter::sendReserveClientsCommand(const string& command) {
-        lock_guard<mutex> lock(m_clientConnectionsMutex);
-        auto removeExpiredConnections = std::remove_if(m_clientsConnection.begin(), m_clientsConnection.end(), [](auto& connection) {
-            return connection.expired();
-        });
-        mylog(INFO, "Removing", std::distance(removeExpiredConnections, m_clientsConnection.end()), "expired connections");
-        m_clientsConnection.erase(removeExpiredConnections, m_clientsConnection.end());
-        for (auto& clientConnection: m_clientsConnection) {
-            std::shared_ptr<Connection> strongConnection = clientConnection.lock();
+    void CDataCenter::sendReserveDatacentersCommand(const string& command) {
+        lock_guard<mutex> lock(m_datacenterConnectionsMutex);
+        for (auto& datacenterConnection: m_datacentersConnection) {
+            std::shared_ptr<Connection> strongConnection = datacenterConnection.lock();
             // Ensure connection is valid, because in another thread it can be disconnected
             if (strongConnection) {
                 strongConnection->sendCommandToReserve(command);

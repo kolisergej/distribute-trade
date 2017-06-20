@@ -9,19 +9,16 @@ public:
 
     void start();
     network::socket& socket();
-    void sendCommandToReserve(const string& command);
+    string region() const;
 
 private:
     void read();
     void onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered);
-    void onDatacenterPayloadWrite(const bs::error_code& er);
-    void onDatacenterCommandWrite(const bs::error_code& er);
+    void onDatacenterWrite(const bs::error_code& er);
 
     Connection(io_service& service);
     network::socket m_socket;
-
-    mutex m_commandsMutex;
-    queue<string> m_commandsForReserve;
+    string m_region;
 };
 
 #endif // CONNECTION_H
