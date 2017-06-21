@@ -1,7 +1,6 @@
 #include "CDataCenter.h"
 #include "Connection.h"
 
-
 CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenters, string&& region, int balance, string&& serverAddress, size_t serverPort):
     m_selfId(selfId),
     m_dataCenters(std::move(dataCenters)),
@@ -162,13 +161,9 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
                       "Your current balance:", m_balance, ". In processing:", totalBookSum);
             }
 
-            cout << "!!! send:" << message;
-            const string tradeResultMessage("tradeAnswer " +
-                                            std::to_string(bookId) + " " +
-                                            std::to_string(success) + "\n");
-            sendReserveDatacentersCommand(tradeResultMessage);
-            string ackMessage("processed " + std::to_string(bookId) + "\n");
-            sendServerMessage(std::move(ackMessage));
+            sendReserveDatacentersCommand(message + '\n');
+            string processedMessage("processed " + std::to_string(bookId) + "\n");
+            sendServerMessage(std::move(processedMessage));
         }
     } else {
         m_serverReconnectTimer.cancel();
@@ -278,6 +273,7 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                     mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
                 }
             } else if (command == "tradeAnswer") {
+                mylog(INFO, "Trade answer received");
                 size_t bookId;
                 bool success;
                 iss >> bookId;
@@ -354,13 +350,14 @@ void CDataCenter::makeTrade(int sum) {
             mylog(INFO, "Your have no enough money");
             return;
         }
+        m_lastBookId++;
+        m_bookIdSum[m_lastBookId] = sum;
     }
-    m_lastBookId++;
-    m_bookIdSum[m_lastBookId] = sum;
-    string makeTradeCommand("makeTrade " + std::to_string(m_lastBookId) + " " + std::to_string(sum) + '\n');
     mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
     const string bookBalanceCommand("book " + std::to_string(m_lastBookId) + " " + std::to_string(sum) + '\n');
     sendReserveDatacentersCommand(bookBalanceCommand);
+    sleep(1);
+    string makeTradeCommand("makeTrade " + std::to_string(m_lastBookId) + " " + std::to_string(sum) + '\n');
     sendServerMessage(std::move(makeTradeCommand));
 }
 
@@ -370,7 +367,6 @@ void CDataCenter::sendReserveDatacentersCommand(const string& command) {
         std::shared_ptr<Connection> strongConnection = datacenterConnection.lock();
         // Ensure connection is valid, because in another thread it can be disconnected
         if (strongConnection) {
-            cout << "11111\n";
             strongConnection->sendCommandToReserve(command);
         }
     }

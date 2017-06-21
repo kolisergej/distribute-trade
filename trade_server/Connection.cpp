@@ -54,7 +54,7 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
         }
         read();
     } else {
-        mylog(ERROR, "Region down:", er.message());
+        mylog(ERROR, "Region down when try to read:", er.message());
     }
 }
 
@@ -68,7 +68,7 @@ void Connection::onDatacenterWrite(const bs::error_code& er) {
 void Connection::onRegionWrite(const bs::error_code& er) {
     mylog(DEBUG, "onRegionWrite", er.message());
     if (er) {
-        mylog(ERROR, "Region down:", er.message());
+        mylog(ERROR, "Region down when try to write:", er.message());
     }
 }
 

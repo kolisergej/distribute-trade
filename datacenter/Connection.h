@@ -15,7 +15,7 @@ private:
     void read();
     void onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered);
     void onDatacenterPayloadWrite(const bs::error_code& er);
-    void onDatacenterCommandWrite(const bs::error_code& er);
+    void onDatacenterCommandWrite(const bs::error_code& er, std::__1::string command);
 
     explicit Connection(io_service& service);
     network::socket m_socket;
