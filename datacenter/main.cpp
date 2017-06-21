@@ -86,7 +86,9 @@ int main(int argc, char** argv)
                 // For funny debugging. Chitting adding balance
                 dataCenter.changeBalance(sum);
             } else if (command == "makeTrade" || command == "m") {
-                dataCenter.makeTrade(sum);
+                for (int i = 0; i < 100; i++) {
+                    dataCenter.makeTrade(sum);
+                }
             } else {
                 mylog(INFO, "No such command");
             }

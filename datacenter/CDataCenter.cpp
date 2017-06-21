@@ -129,7 +129,7 @@ void CDataCenter::onServerWrite(const bs::error_code& er, string message) {
 }
 
 void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered) {
-    mylog(DEBUG, "onServerRead:", er.message());
+    mylog(INFO, "onServerRead:", er.message());
     if (!er) {
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytesTransfered);
@@ -218,7 +218,7 @@ void CDataCenter::readMaster() {
 }
 
 void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered) {
-    mylog(INFO, "onMasterRead:", er.message());
+    mylog(DEBUG, "onMasterRead:", er.message());
     if (!er) {
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytesTransfered);
@@ -249,7 +249,6 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                 mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
             }
         } else if (command == "tradeAnswer") {
-            mylog(INFO, "Trade answer received");
             size_t bookId;
             bool success;
             iss >> bookId;
@@ -331,7 +330,6 @@ void CDataCenter::makeTrade(int sum) {
     mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
     const string bookBalanceCommand("book " + std::to_string(m_lastBookId) + " " + std::to_string(sum) + '\n');
     sendReserveDatacentersCommand(bookBalanceCommand);
-    sleep(1);
     string makeTradeCommand("makeTrade " + std::to_string(m_lastBookId) + " " + std::to_string(sum) + '\n');
     sendServerMessage(std::move(makeTradeCommand));
 }

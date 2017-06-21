@@ -35,7 +35,7 @@ void Connection::onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, con
 
 
 void Connection::onDatacenterCommandWrite(const bs::error_code& er, string command) {
-    mylog(INFO, "onDatacenterCommandWrite", command, er.message());
+    mylog(DEBUG, "onDatacenterCommandWrite", command, er.message());
     if (er) {
         mylog(ERROR, "Reserve datacenter down:", er.message());
     }
