@@ -26,6 +26,7 @@ void Connection::onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, con
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytesTransfered);
 
+        mylog(DEBUG, "Received from reserve datacenter:", message);
         {
             lock_guard<mutex> lock(m_commandsMutex);
             while(!m_commandsForReserve.empty()) {
@@ -38,26 +39,11 @@ void Connection::onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, con
                 m_commandsForReserve.pop();
             }
         }
-        mylog(DEBUG, "Received from reserve datacenter:", message);
-        if (message == "payload\n") {
-            mylog(DEBUG, "Sending payload to reserve datacenter");
-            m_socket.async_send(boost::asio::buffer(message), bind(&Connection::onDatacenterPayloadWrite,
-                                                                   shared_from_this(),
-                                                                   _1));
-        }
     } else {
         mylog(ERROR, "Reserve datacenter down:", er.message());
     }
 }
 
-void Connection::onDatacenterPayloadWrite(const bs::error_code& er) {
-    mylog(DEBUG, "onDatacenterPayloadWrite", er.message());
-    if (!er) {
-        read();
-    } else {
-        mylog(ERROR, "Reserve datacenter down:", er.message());
-    }
-}
 
 void Connection::onDatacenterCommandWrite(const bs::error_code& er, string command) {
     mylog(INFO, "onDatacenterCommandWrite", command, er.message());

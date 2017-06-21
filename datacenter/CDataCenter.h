@@ -57,11 +57,7 @@ private:
 
 ////////////////////////****** Reserve part ******////////////////////////
 
-    boost::asio::deadline_timer m_payloadTimer;
     void onMasterConnect(const bs::error_code& er);
-    void writePayloadToMaster();
-    void onWritePayloadTimer(const bs::error_code& er);
-    void onMasterPayloadWrite(const bs::error_code& er);
     void onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered);
 
     void connectNextMaster();

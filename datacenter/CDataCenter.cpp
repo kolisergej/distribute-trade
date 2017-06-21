@@ -12,8 +12,7 @@ CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenter
     m_acceptor(m_service, network::endpoint(network::v4(), m_dataCenters[m_selfId].m_port)),
     m_serverReconnectTimer(m_service),
     m_datacentersConnectionsCheckTimer(m_service),
-    m_socket(make_unique<network::socket>(m_service)),
-    m_payloadTimer(m_service)
+    m_socket(make_unique<network::socket>(m_service))
 {
     const auto masterDataCenter = std::find_if(m_dataCenters.begin(), m_dataCenters.end(), [](const auto& pair) {
         return pair.second.m_isMaster;
@@ -200,31 +199,6 @@ void CDataCenter::onConnectionsCheckTimer(const bs::error_code& er) {
 void CDataCenter::onMasterConnect(const bs::error_code& er) {
     if (!er) {
         mylog(INFO, "Connected with master");
-        writePayloadToMaster();
-    } else {
-        mylog(ERROR, "Master connection error:", er.message());
-        //        If potential next master was down before current master was down,
-        //        then just connectNextMaster
-        connectNextMaster();
-    }
-}
-
-void CDataCenter::writePayloadToMaster() {
-    m_payloadTimer.expires_from_now(boost::posix_time::seconds(1));
-    m_payloadTimer.async_wait(std::bind(&CDataCenter::onWritePayloadTimer, this, _1));
-}
-
-void CDataCenter::onWritePayloadTimer(const bs::error_code& er) {
-    if (!er) {
-        m_socket->async_send(boost::asio::buffer("payload\n"), std::bind(&CDataCenter::onMasterPayloadWrite,
-                                                                       this,
-                                                                       _1));
-    }
-}
-
-void CDataCenter::onMasterPayloadWrite(const bs::error_code& er) {
-    mylog(DEBUG, "onMasterPayloadWrite:", er.message());
-    if (!er) {
         shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
         async_read_until(*(m_socket.get()), *(buffer.get()), '\n', std::bind(&CDataCenter::onMasterRead,
                                                                              this,
@@ -232,8 +206,9 @@ void CDataCenter::onMasterPayloadWrite(const bs::error_code& er) {
                                                                              _1,
                                                                              _2));
     } else {
-        // Assume master was down. Don't check concrete error codes
-        mylog(ERROR, "Master was down:", er.message());
+        mylog(ERROR, "Master connection error:", er.message());
+        //        If potential next master was down before current master was down,
+        //        then just connectNextMaster
         connectNextMaster();
     }
 }
@@ -244,62 +219,57 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytesTransfered);
         mylog(DEBUG, "Received from master:", message);
-        if (message == "payload\n") {
-            writePayloadToMaster();
-        } else {
-            istringstream iss(message);
-            string command;
-            iss >> command;
-            if (command == "setBalance") {
-                int sum;
-                iss >> sum;
-                {
-                    lock_guard<mutex> lock(m_balanceMutex);
-                    m_balance += sum;
-                    const int totalBookSum = std::accumulate(std::begin(m_bookIdSum),
-                                                             std::end(m_bookIdSum),
-                                                             0,
-                                                             [] (int value, auto p) { return value + p.second; }
-                    );
-                    mylog(INFO, "Your current balance:", m_balance, ". In processing: ", totalBookSum);
-                }
-            } else if (command == "book") {
-                int sum;
-                iss >> m_lastBookId;
-                iss >> sum;
-                {
-                    lock_guard<mutex> lock(m_balanceMutex);
-                    m_bookIdSum[m_lastBookId] = sum;
-                    mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
-                }
-            } else if (command == "tradeAnswer") {
-                mylog(INFO, "Trade answer received");
-                size_t bookId;
-                bool success;
-                iss >> bookId;
-                iss >> success;
-                {
-                    lock_guard<mutex> lock(m_balanceMutex);
-                    const int& bookSum = m_bookIdSum[bookId];
-                    if (success) {
-                        m_balance += 2 * bookSum;
-                    } else {
-                        m_balance -= bookSum;
-                    }
-                    m_bookIdSum.erase(bookId);
-                    const int totalBookSum = std::accumulate(std::begin(m_bookIdSum),
-                                                             std::end(m_bookIdSum),
-                                                             0,
-                                                             [] (int value, auto p) { return value + p.second; }
-                    );
-                    mylog(INFO, "Trade answer:",
-                          success ? "success." : "failed.",
-                          "Your current balance:", m_balance, ". In processing:", totalBookSum);
-                }
-            } else {
-                mylog(INFO, "Unknown command");
+        istringstream iss(message);
+        string command;
+        iss >> command;
+        if (command == "setBalance") {
+            int sum;
+            iss >> sum;
+            {
+                lock_guard<mutex> lock(m_balanceMutex);
+                m_balance += sum;
+                const int totalBookSum = std::accumulate(std::begin(m_bookIdSum),
+                                                         std::end(m_bookIdSum),
+                                                         0,
+                                                         [] (int value, auto p) { return value + p.second; }
+                );
+                mylog(INFO, "Your current balance:", m_balance, ". In processing: ", totalBookSum);
             }
-            writePayloadToMaster();
+        } else if (command == "book") {
+            int sum;
+            iss >> m_lastBookId;
+            iss >> sum;
+            {
+                lock_guard<mutex> lock(m_balanceMutex);
+                m_bookIdSum[m_lastBookId] = sum;
+                mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
+            }
+        } else if (command == "tradeAnswer") {
+            mylog(INFO, "Trade answer received");
+            size_t bookId;
+            bool success;
+            iss >> bookId;
+            iss >> success;
+            {
+                lock_guard<mutex> lock(m_balanceMutex);
+                const int& bookSum = m_bookIdSum[bookId];
+                if (success) {
+                    m_balance += 2 * bookSum;
+                } else {
+                    m_balance -= bookSum;
+                }
+                m_bookIdSum.erase(bookId);
+                const int totalBookSum = std::accumulate(std::begin(m_bookIdSum),
+                                                         std::end(m_bookIdSum),
+                                                         0,
+                                                         [] (int value, auto p) { return value + p.second; }
+                );
+                mylog(INFO, "Trade answer:",
+                      success ? "success." : "failed.",
+                      "Your current balance:", m_balance, ". In processing:", totalBookSum);
+            }
+        } else {
+            mylog(INFO, "Unknown command");
         }
     } else {
         // Assume master was down. Don't check concrety error codes
