@@ -17,7 +17,7 @@ private:
     void onDatacenterPayloadWrite(const bs::error_code& er);
     void onDatacenterCommandWrite(const bs::error_code& er);
 
-    Connection(io_service& service);
+    explicit Connection(io_service& service);
     network::socket m_socket;
 
     mutex m_commandsMutex;

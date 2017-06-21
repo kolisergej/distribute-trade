@@ -8,6 +8,7 @@
 #include <mutex>
 #include <numeric>
 #include <queue>
+#include <random>
 #include <sstream>
 #include <string>
 #include <thread>

@@ -9,12 +9,14 @@ class CTradeServer
 public:
     explicit CTradeServer(size_t port);
     void start();
+    void addRegionConnection(const string& region, weak_ptr<Connection> connection);
 
 private:
-    void handleMasterDataCenterConnection(shared_ptr<Connection> connection, const bs::error_code& er);
+    void handleRegionConnection(shared_ptr<Connection> connection, const bs::error_code& er);
 
-    vector<weak_ptr<Connection>> m_datacentersConnection;
-    mutex m_datacenterConnectionsMutex;
+    map<string, weak_ptr<Connection>> m_regionConnection;
+    mutex m_regionConnectionsMutex;
+
 
     io_service m_service;
     network::acceptor m_acceptor;

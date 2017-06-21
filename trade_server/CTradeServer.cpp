@@ -9,9 +9,9 @@ CTradeServer::CTradeServer(size_t port):
 
 void CTradeServer::start()
 {
-    mylog(INFO, "I'm' server, listen", m_acceptor.local_endpoint().port());
-    shared_ptr<Connection> connection = Connection::createConnection(m_service);
-    m_acceptor.async_accept(connection->socket(), std::bind(&CTradeServer::handleMasterDataCenterConnection,
+    mylog(INFO, "I'm server, listen", m_acceptor.local_endpoint().port());
+    shared_ptr<Connection> connection = Connection::createConnection(m_service, this);
+    m_acceptor.async_accept(connection->socket(), std::bind(&CTradeServer::handleRegionConnection,
                                                             this,
                                                             connection,
                                                             _1));
@@ -29,18 +29,19 @@ void CTradeServer::start()
     }
 }
 
-void CTradeServer::handleMasterDataCenterConnection(shared_ptr<Connection> connection, const bs::error_code& er) {
+void CTradeServer::handleRegionConnection(shared_ptr<Connection> connection, const bs::error_code& er) {
     if (!er) {
-        mylog(INFO, "Handle master datacenter connection");
-        {
-            lock_guard<mutex> lock(m_datacenterConnectionsMutex);
-            m_datacentersConnection.push_back(connection);
-        }
+        mylog(INFO, "Handle region connection");
         connection->start();
-        shared_ptr<Connection> newConnection = Connection::createConnection(m_service);
-        m_acceptor.async_accept(newConnection->socket(), std::bind(&CTradeServer::handleMasterDataCenterConnection,
+        shared_ptr<Connection> newConnection = Connection::createConnection(m_service, this);
+        m_acceptor.async_accept(newConnection->socket(), std::bind(&CTradeServer::handleRegionConnection,
                                                                 this,
                                                                 newConnection,
                                                                 _1));
     }
+}
+
+void CTradeServer::addRegionConnection(const string& region, weak_ptr<Connection> connection) {
+    lock_guard<mutex> lock(m_regionConnectionsMutex);
+    m_regionConnection[region] = connection;
 }
