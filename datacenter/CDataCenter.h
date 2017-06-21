@@ -58,8 +58,8 @@ private:
 ////////////////////////****** Reserve part ******////////////////////////
 
     void onMasterConnect(const bs::error_code& er);
+    void readMaster();
     void onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered);
-
     void connectNextMaster();
 
 ////////////////////////////////////////////////////////////////////////

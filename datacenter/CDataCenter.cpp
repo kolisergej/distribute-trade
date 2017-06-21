@@ -160,7 +160,7 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
                       "Your current balance:", m_balance, ". In processing:", totalBookSum);
             }
 
-            sendReserveDatacentersCommand(message + '\n');
+            sendReserveDatacentersCommand(message);
             string processedMessage("processed " + std::to_string(bookId) + "\n");
             sendServerMessage(std::move(processedMessage));
         }
@@ -199,18 +199,22 @@ void CDataCenter::onConnectionsCheckTimer(const bs::error_code& er) {
 void CDataCenter::onMasterConnect(const bs::error_code& er) {
     if (!er) {
         mylog(INFO, "Connected with master");
-        shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
-        async_read_until(*(m_socket.get()), *(buffer.get()), '\n', std::bind(&CDataCenter::onMasterRead,
-                                                                             this,
-                                                                             buffer,
-                                                                             _1,
-                                                                             _2));
+        readMaster();
     } else {
         mylog(ERROR, "Master connection error:", er.message());
         //        If potential next master was down before current master was down,
         //        then just connectNextMaster
         connectNextMaster();
     }
+}
+
+void CDataCenter::readMaster() {
+    shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
+    async_read_until(*(m_socket.get()), *(buffer.get()), '\n', std::bind(&CDataCenter::onMasterRead,
+                                                                         this,
+                                                                         buffer,
+                                                                         _1,
+                                                                         _2));
 }
 
 void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered) {
@@ -271,6 +275,7 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
         } else {
             mylog(INFO, "Unknown command");
         }
+        readMaster();
     } else {
         // Assume master was down. Don't check concrety error codes
         mylog(ERROR, "Master was down:", er.message());
