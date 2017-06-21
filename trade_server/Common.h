@@ -13,6 +13,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>

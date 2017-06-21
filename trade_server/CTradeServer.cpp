@@ -45,3 +45,21 @@ void CTradeServer::addRegionConnection(const string& region, weak_ptr<Connection
     lock_guard<mutex> lock(m_regionConnectionsMutex);
     m_regionConnection[region] = connection;
 }
+
+void CTradeServer::addActiveTransaction(const string& region, int transactionId, bool succeed) {
+    lock_guard<mutex> lock(m_regionActiveTransactionsMutex);
+    m_regionActiveTransactions[region][transactionId] = succeed;
+}
+
+void CTradeServer::transactionCompleted(const string& region, int transactionId) {
+    lock_guard<mutex> lock(m_regionActiveTransactionsMutex);
+    m_regionActiveTransactions[region].erase(transactionId);
+}
+
+std::unordered_map<int, bool> CTradeServer::getTransactionsForRegion(const string& region) const {
+    lock_guard<mutex> lock(m_regionActiveTransactionsMutex);
+    if (m_regionActiveTransactions.find(region) != m_regionActiveTransactions.end()) {
+        return m_regionActiveTransactions.at(region);
+    }
+    return std::unordered_map<int, bool>();
+}

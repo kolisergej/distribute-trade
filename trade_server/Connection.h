@@ -15,15 +15,17 @@ public:
 
 private:
     void read();
-    void onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered);
-    void onDatacenterWrite(const bs::error_code& er);
-    void onRegionWrite(const bs::error_code& er);
+    void onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);
+    void onSendTimer(const bs::error_code& er);
 
     Connection(io_service& service, CTradeServer* pTradeServer);
     network::socket m_socket;
     string m_region;
     CTradeServer* m_pTradeServer;
     std::function<bool()> m_tradeLogic;
+    mutex m_sendCommandsMutex;
+    queue<string> m_sendCommands;
+    boost::asio::deadline_timer m_sendCommandsTimer;
 };
 
 #endif // CONNECTION_H
