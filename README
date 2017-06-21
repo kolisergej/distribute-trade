@@ -1,0 +1,17 @@
+Main UI commands:
+makeTrade (or “m”) 	<<number>> - make trading operation
+changeBalance (or “c”) 	<<number>> - cheat. Add money for user
+
+Main network commands:
+setBalance <<sum>>
+book <<transactionId>> <<sum>>
+makeTrade <<transactionId>> <<sum>>
+tradeAnswer <<transactionId>> <<success>>
+processed <<transactionId>>
+setRegion <<region>>
+
+You can test with running master datacenter, trade server, reserve datacenter(s). 
+
+tested on macOS Sierra and Debian Jessie
+
+thank you for my asio experience :)
