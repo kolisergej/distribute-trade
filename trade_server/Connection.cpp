@@ -60,7 +60,7 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
 
 void Connection::onDatacenterWrite(const bs::error_code& er) {
     if (!er) {
-        mylog(INFO, "Answered to datacenter");
+        mylog(DEBUG, "Answered to datacenter");
     }
 }
 

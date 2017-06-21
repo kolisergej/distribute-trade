@@ -162,8 +162,12 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
                       "Your current balance:", m_balance, ". In processing:", totalBookSum);
             }
 
-            sendReserveDatacentersCommand(message);
-            string ackMessage("processed " + std::to_string(bookId) + '\n');
+            cout << "!!! send:" << message;
+            const string tradeResultMessage("tradeAnswer " +
+                                            std::to_string(bookId) + " " +
+                                            std::to_string(success) + "\n");
+            sendReserveDatacentersCommand(tradeResultMessage);
+            string ackMessage("processed " + std::to_string(bookId) + "\n");
             sendServerMessage(std::move(ackMessage));
         }
     } else {
@@ -240,7 +244,7 @@ void CDataCenter::onMasterPayloadWrite(const bs::error_code& er) {
 }
 
 void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er, size_t bytesTransfered) {
-    mylog(DEBUG, "onMasterRead:", er.message());
+    mylog(INFO, "onMasterRead:", er.message());
     if (!er) {
         boost::asio::streambuf::const_buffers_type bufs = buffer->data();
         const string message(boost::asio::buffers_begin(bufs), boost::asio::buffers_begin(bufs) + bytesTransfered);
@@ -264,7 +268,6 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                     );
                     mylog(INFO, "Your current balance:", m_balance, ". In processing: ", totalBookSum);
                 }
-                writePayloadToMaster();
             } else if (command == "book") {
                 int sum;
                 iss >> m_lastBookId;
@@ -274,7 +277,6 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                     m_bookIdSum[m_lastBookId] = sum;
                     mylog(INFO, "During trade operation", sum, "booked. Book id =", m_lastBookId);
                 }
-                writePayloadToMaster();
             } else if (command == "tradeAnswer") {
                 size_t bookId;
                 bool success;
@@ -300,8 +302,8 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                 }
             } else {
                 mylog(INFO, "Unknown command");
-                writePayloadToMaster();
             }
+            writePayloadToMaster();
         }
     } else {
         // Assume master was down. Don't check concrety error codes
@@ -368,6 +370,7 @@ void CDataCenter::sendReserveDatacentersCommand(const string& command) {
         std::shared_ptr<Connection> strongConnection = datacenterConnection.lock();
         // Ensure connection is valid, because in another thread it can be disconnected
         if (strongConnection) {
+            cout << "11111\n";
             strongConnection->sendCommandToReserve(command);
         }
     }
