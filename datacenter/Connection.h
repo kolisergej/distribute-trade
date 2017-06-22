@@ -14,10 +14,10 @@ public:
 private:
     void read();
     void onDatacenterRead(const bs::error_code& er);
-    void onDatacenterCommandWrite(const bs::error_code& er, std::string command);
     void onSendTimer(const bs::error_code& er);
 
     explicit Connection(io_service& service);
+
     network::socket m_socket;
     queue<string> m_sendReserveDatacentersCommands;
     boost::asio::deadline_timer m_sendReserveDatacentersTimer;

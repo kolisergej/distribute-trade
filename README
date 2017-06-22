@@ -6,7 +6,7 @@ Main network commands:
 setBalance <<sum>>
 book <<transactionId>> <<sum>>
 makeTrade <<transactionId>> <<sum>>
-tradeAnswer <<transactionId>> <<success>>
+tradeAnswer <<transactionId>> <<sum>> <<success>>
 processed <<transactionId>>
 setRegion <<region>>
 

@@ -48,9 +48,9 @@ void CDataCenter::networkInit() {
                                                                 this,
                                                                 connection,
                                                                 _1));
-        m_socket->async_connect(m_serverEndpoint, std::bind(&CDataCenter::handleServerConnection,
-                                                            this,
-                                                            _1));
+
+        m_serverReconnectTimer.expires_from_now(boost::posix_time::seconds(1));
+        m_serverReconnectTimer.async_wait(std::bind(&CDataCenter::onServerReconnect, this, _1));
 
         m_datacentersConnectionsCheckTimer.expires_from_now(boost::posix_time::seconds(1));
         m_datacentersConnectionsCheckTimer.async_wait(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1));
@@ -65,6 +65,44 @@ void CDataCenter::networkInit() {
     }
 }
 
+int CDataCenter::tradeAnswerProcess(istringstream& iss) {
+    size_t transactionId;
+    int sum;
+    bool success;
+    iss >> transactionId;
+    iss >> sum;
+    iss >> success;
+    {
+        lock_guard<mutex> lock(m_balanceMutex);
+        int transactionSum;
+        auto it = m_transactionIdSum.find(transactionId);
+        if (it != m_transactionIdSum.end()) {
+            transactionSum = it->second;
+        } else {
+//            If we here, it means that master datacenter was down
+//            and it had no time for send book command to reserve due to lots of reserved datacenters or network latency
+//            But send transaction to server. Such case we discard all our m_transactionIdSums and assign hard balance
+            m_transactionIdSum.clear();
+            transactionSum = sum;
+            mylog(INFO, "Hard assign transaction sum", transactionSum);
+        }
+        if (success) {
+            m_balance += 2 * transactionSum;
+        } else {
+            m_balance -= transactionSum;
+        }
+        m_transactionIdSum.erase(transactionId);
+        const int totalTransactionSum = std::accumulate(std::begin(m_transactionIdSum),
+                                                 std::end(m_transactionIdSum),
+                                                 0,
+                                                 [] (int value, auto p) { return value + p.second; }
+        );
+        mylog(INFO, "Transaction id:", transactionId,
+              success ? "success." : "failed.",
+              "Your current balance:", m_balance, ". In processing:", totalTransactionSum);
+    }
+    return transactionId;
+}
 
 ////////////////////////****** Master part ******////////////////////////
 
@@ -88,12 +126,13 @@ void CDataCenter::handleServerConnection(const bs::error_code& er) {
     if (!er) {
         m_connectedToServer = true;
         mylog(INFO, "Handle server connection");
-        serverRead();
         string initServerMessage("setRegion " + m_region + '\n');
         sendServerMessage(std::move(initServerMessage));
+        serverRead();
     } else {
         m_connectedToServer = false;
         m_socket = make_unique<network::socket>(m_service);
+        m_serverReconnectTimer.cancel();
         m_serverReconnectTimer.expires_from_now(boost::posix_time::seconds(1));
         m_serverReconnectTimer.async_wait(std::bind(&CDataCenter::onServerReconnect, this, _1));
     }
@@ -126,29 +165,7 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
             string command;
             iss >> command;
             if (command == "tradeAnswer") {
-                size_t transactionId;
-                bool success;
-                iss >> transactionId;
-                iss >> success;
-                {
-                    lock_guard<mutex> lock(m_balanceMutex);
-                    const int& transactionSum = m_transactionIdSum[transactionId];
-                    if (success) {
-                        m_balance += 2 * transactionSum;
-                    } else {
-                        m_balance -= transactionSum;
-                    }
-                    m_transactionIdSum.erase(transactionId);
-                    const int totalTransactionSum = std::accumulate(std::begin(m_transactionIdSum),
-                                                             std::end(m_transactionIdSum),
-                                                             0,
-                                                             [] (int value, auto p) { return value + p.second; }
-                    );
-                    mylog(INFO, "Transaction id:", transactionId,
-                          success ? "success." : "failed.",
-                          "Your current balance:", m_balance, ". In processing:", totalTransactionSum);
-                }
-
+                const int transactionId = tradeAnswerProcess(iss);
                 sendReserveDatacentersCommand(message + '\n');
                 string processedMessage("processed " + std::to_string(transactionId) + "\n");
                 sendServerMessage(std::move(processedMessage));
@@ -156,7 +173,9 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
         }
         serverRead();
     } else {
+        mylog(INFO, "Server was down. Reconnecting.");
         m_connectedToServer = false;
+        m_serverReconnectTimer.cancel();
         m_serverReconnectTimer.expires_from_now(boost::posix_time::seconds(1));
         m_serverReconnectTimer.async_wait(std::bind(&CDataCenter::onServerReconnect, this, _1));
     }
@@ -263,28 +282,7 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                     mylog(INFO, "During trade operation", sum, "booked. Transaction id =", m_lastTransactionId);
                 }
             } else if (command == "tradeAnswer") {
-                size_t transactionId;
-                bool success;
-                iss >> transactionId;
-                iss >> success;
-                {
-                    lock_guard<mutex> lock(m_balanceMutex);
-                    const int& transactionSum = m_transactionIdSum[transactionId];
-                    if (success) {
-                        m_balance += 2 * transactionSum;
-                    } else {
-                        m_balance -= transactionSum;
-                    }
-                    m_transactionIdSum.erase(transactionId);
-                    const int totalTransactionSum = std::accumulate(std::begin(m_transactionIdSum),
-                                                             std::end(m_transactionIdSum),
-                                                             0,
-                                                             [] (int value, auto p) { return value + p.second; }
-                    );
-                    mylog(INFO, "Transaction id:", transactionId,
-                          success ? "success." : "failed.",
-                          "Your current balance:", m_balance, ". In processing:", totalTransactionSum);
-                }
+                tradeAnswerProcess(iss);
             } else {
                 mylog(INFO, "Unknown command");
             }

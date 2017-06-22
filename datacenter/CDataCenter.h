@@ -29,6 +29,7 @@ private:
     io_service m_service;
 
     void networkInit();
+    int tradeAnswerProcess(istringstream& iss);
 
 
 ////////////////////////****** Master part ******////////////////////////

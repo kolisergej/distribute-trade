@@ -9,6 +9,8 @@ shared_ptr<Connection> Connection::createConnection(io_service& service, CTradeS
 }
 
 void Connection::start() {
+    m_sendCommandsTimer.expires_from_now(boost::posix_time::seconds(1));
+    m_sendCommandsTimer.async_wait(std::bind(&Connection::onSendTimer, shared_from_this(), _1));
     read();
 }
 
@@ -43,10 +45,15 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
                     lock_guard<mutex> lock(m_sendCommandsMutex);
                     auto activeTransactions = m_pTradeServer->getTransactionsForRegion(m_region);
                     for (auto& transaction: activeTransactions) {
-                        mylog(INFO, "Send active transaction:", m_region, transaction.first, transaction.second);
+                        mylog(INFO, "Send active transaction:",
+                              m_region,
+                              transaction.first,
+                              transaction.second.first,
+                              transaction.second.second);
                         m_sendCommands.push(string("tradeAnswer " +
                                                    std::to_string(transaction.first) + " " +
-                                                   std::to_string(transaction.second) + '\n'));
+                                                   std::to_string(transaction.second.first) + " " +
+                                                   std::to_string(transaction.second.second) +'\n'));
                     }
                 }
             } else if (command == "makeTrade") {
@@ -57,12 +64,13 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
                 const bool succeed = m_tradeLogic();
                 const string tradeResultMessage("tradeAnswer " +
                                                 std::to_string(transactionId) + " " +
+                                                std::to_string(sum) + " " +
                                                 std::to_string(succeed) + '\n');
                 {
                     lock_guard<mutex> lock(m_sendCommandsMutex);
                     m_sendCommands.push(tradeResultMessage);
                 }
-                m_pTradeServer->addActiveTransaction(m_region, transactionId, succeed);
+                m_pTradeServer->addActiveTransaction(m_region, transactionId, sum, succeed);
             } else if (command == "processed") {
                 size_t transactionId;
                 iss >> transactionId;
@@ -86,8 +94,6 @@ Connection::Connection(io_service& service, CTradeServer* pTradeServer):
     m_tradeLogic(std::bind(std::uniform_int_distribution<>(0,1), std::default_random_engine())),
     m_sendCommandsTimer(service)
 {
-    m_sendCommandsTimer.expires_from_now(boost::posix_time::seconds(1));
-    m_sendCommandsTimer.async_wait(std::bind(&Connection::onSendTimer, this, _1));
 }
 
 void Connection::onSendTimer(const bs::error_code& er) {

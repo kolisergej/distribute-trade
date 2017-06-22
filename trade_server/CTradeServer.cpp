@@ -46,9 +46,9 @@ void CTradeServer::addRegionConnection(const string& region, weak_ptr<Connection
     m_regionConnection[region] = connection;
 }
 
-void CTradeServer::addActiveTransaction(const string& region, int transactionId, bool succeed) {
+void CTradeServer::addActiveTransaction(const string& region, int transactionId, int sum, bool succeed) {
     lock_guard<mutex> lock(m_regionActiveTransactionsMutex);
-    m_regionActiveTransactions[region][transactionId] = succeed;
+    m_regionActiveTransactions[region][transactionId] = std::make_pair(sum, succeed);
 }
 
 void CTradeServer::transactionCompleted(const string& region, int transactionId) {
@@ -56,10 +56,10 @@ void CTradeServer::transactionCompleted(const string& region, int transactionId)
     m_regionActiveTransactions[region].erase(transactionId);
 }
 
-std::unordered_map<int, bool> CTradeServer::getTransactionsForRegion(const string& region) const {
+std::unordered_map<int, std::pair<int, bool> > CTradeServer::getTransactionsForRegion(const string& region) const {
     lock_guard<mutex> lock(m_regionActiveTransactionsMutex);
     if (m_regionActiveTransactions.find(region) != m_regionActiveTransactions.end()) {
         return m_regionActiveTransactions.at(region);
     }
-    return std::unordered_map<int, bool>();
+    return std::unordered_map<int, std::pair<int, bool> >();
 }

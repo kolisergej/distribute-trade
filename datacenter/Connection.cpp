@@ -7,6 +7,8 @@ shared_ptr<Connection> Connection::createConnection(io_service& service)
 }
 
 void Connection::start() {
+    m_sendReserveDatacentersTimer.expires_from_now(boost::posix_time::seconds(1));
+    m_sendReserveDatacentersTimer.async_wait(std::bind(&Connection::onSendTimer, shared_from_this(), _1));
     read();
 }
 
@@ -23,15 +25,7 @@ void Connection::onDatacenterRead(const bs::error_code& er) {
     if (!er) {
         read();
     } else {
-        mylog(ERROR, "Reserve datacenter down:", er.message());
-    }
-}
-
-
-void Connection::onDatacenterCommandWrite(const bs::error_code& er, string command) {
-    mylog(DEBUG, "onDatacenterCommandWrite", command, er.message());
-    if (er) {
-        mylog(ERROR, "Reserve datacenter down:", er.message());
+        m_sendReserveDatacentersTimer.cancel();
     }
 }
 
@@ -43,8 +37,6 @@ Connection::Connection(io_service& service):
     m_socket(service),
     m_sendReserveDatacentersTimer(service)
 {
-    m_sendReserveDatacentersTimer.expires_from_now(boost::posix_time::seconds(1));
-    m_sendReserveDatacentersTimer.async_wait(std::bind(&Connection::onSendTimer, this, _1));
 }
 
 void Connection::onSendTimer(const bs::error_code& er) {
@@ -53,14 +45,14 @@ void Connection::onSendTimer(const bs::error_code& er) {
         lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
         if (m_sendReserveDatacentersCommands.empty()) {
             m_sendReserveDatacentersTimer.expires_from_now(boost::posix_time::seconds(1));
-            m_sendReserveDatacentersTimer.async_wait(std::bind(&Connection::onSendTimer, this, _1));
+            m_sendReserveDatacentersTimer.async_wait(std::bind(&Connection::onSendTimer, shared_from_this(), _1));
             return;
         }
         const string command = m_sendReserveDatacentersCommands.front();
         m_sendReserveDatacentersCommands.pop();
         mylog(DEBUG, "Sending", command, "to reserve datacenter");
         async_write(m_socket, boost::asio::buffer(command), std::bind(&Connection::onSendTimer,
-                                                                               this,
+                                                                               shared_from_this(),
                                                                                _1));
     }
 }
