@@ -11,7 +11,6 @@ public:
 
     void start();
     network::socket& socket();
-    string region() const;
 
 private:
     void read();

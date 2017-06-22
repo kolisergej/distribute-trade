@@ -14,10 +14,6 @@ void Connection::start() {
     read();
 }
 
-string Connection::region() const {
-    return m_region;
-}
-
 void Connection::read() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
     async_read_until(m_socket, *(buffer.get()), '\n', bind(&Connection::onRegionRead,
@@ -38,9 +34,8 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
             string command;
             iss >> command;
             if (command == "setRegion") {
-                string region;
-                iss >> region;
-                m_pTradeServer->addRegionConnection(region, weak_ptr<Connection>(shared_from_this()));
+                iss >> m_region;
+                m_pTradeServer->addRegionConnection(m_region, weak_ptr<Connection>(shared_from_this()));
                 {
                     lock_guard<mutex> lock(m_sendCommandsMutex);
                     auto activeTransactions = m_pTradeServer->getTransactionsForRegion(m_region);
