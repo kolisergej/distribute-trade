@@ -145,11 +145,11 @@ void CDataCenter::handleServerConnection(const bs::error_code& er) {
 
 void CDataCenter::serverRead() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
-    async_read_until(*(m_socket.get()), *(buffer.get()), '\n', bind(&CDataCenter::onServerRead,
-                                                                    this,
-                                                                    buffer,
-                                                                    _1
-                                                                    ));
+    async_read_until(*m_socket, *buffer, '\n', bind(&CDataCenter::onServerRead,
+                                                    this,
+                                                    buffer,
+                                                    _1
+                                                    ));
 }
 
 void CDataCenter::onServerReconnect(const bs::error_code& er) {
@@ -163,7 +163,7 @@ void CDataCenter::onServerReconnect(const bs::error_code& er) {
 void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
     mylog(DEBUG, "onServerRead:", er.message());
     if (!er) {
-        std::istream is(&(*buffer.get()));
+        std::istream is(&(*buffer));
         string message;
         while (std::getline(is, message)) {
             istringstream iss(message);
@@ -198,10 +198,10 @@ void CDataCenter::sendCommandToServer() {
     std::shared_ptr<string> serverWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to server");
     m_serverCommands.pop();
-    async_write(*(m_socket.get()), boost::asio::buffer(*(serverWriteBuffer.get())), bind(&CDataCenter::onSendCommandToServer,
-                                                                                this,
-                                                                                serverWriteBuffer,
-                                                                                _1));
+    m_socket->async_send(boost::asio::buffer(*serverWriteBuffer), bind(&CDataCenter::onSendCommandToServer,
+                                                                       this,
+                                                                       serverWriteBuffer,
+                                                                       _1));
 }
 
 void CDataCenter::onSendCommandToServer(std::shared_ptr<string> buffer, const bs::error_code& er) {
@@ -251,16 +251,16 @@ void CDataCenter::onMasterConnect(const bs::error_code& er) {
 
 void CDataCenter::readMaster() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
-    async_read_until(*(m_socket.get()), *(buffer.get()), '\n', std::bind(&CDataCenter::onMasterRead,
-                                                                         this,
-                                                                         buffer,
-                                                                         _1));
+    async_read_until(*m_socket, *buffer, '\n', std::bind(&CDataCenter::onMasterRead,
+                                                         this,
+                                                         buffer,
+                                                         _1));
 }
 
 void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
     mylog(DEBUG, "onMasterRead:", er.message());
     if (!er) {
-        std::istream is(&(*buffer.get()));
+        std::istream is(&(*buffer));
         string message;
         while (std::getline(is, message)) {
             mylog(DEBUG, "Received from master:", message);

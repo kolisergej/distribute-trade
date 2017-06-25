@@ -12,11 +12,11 @@ void Connection::start() {
 
 void Connection::read() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
-    async_read_until(m_socket, *(buffer.get()), '\n', bind(&Connection::onDatacenterRead,
-                                                           shared_from_this(),
-                                                           buffer,
-                                                           _1
-                                                           ));
+    async_read_until(m_socket, *buffer, '\n', bind(&Connection::onDatacenterRead,
+                                                   shared_from_this(),
+                                                   buffer,
+                                                   _1
+                                                   ));
 }
 
 void Connection::onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
@@ -50,10 +50,10 @@ void Connection::sendCommandToReserve() {
     std::shared_ptr<string> reserveDatacanterWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to reserve datacenter");
     m_sendReserveDatacentersCommands.pop();
-    async_write(m_socket, boost::asio::buffer(*(reserveDatacanterWriteBuffer.get())), bind(&Connection::onSendCommandToReserve,
-                                                                                           shared_from_this(),
-                                                                                           reserveDatacanterWriteBuffer,
-                                                                                           _1));
+    m_socket.async_send(boost::asio::buffer(*reserveDatacanterWriteBuffer), bind(&Connection::onSendCommandToReserve,
+                                                                                 shared_from_this(),
+                                                                                 reserveDatacanterWriteBuffer,
+                                                                                 _1));
 }
 
 void Connection::onSendCommandToReserve(std::shared_ptr<string> buffer, const bs::error_code& er) {

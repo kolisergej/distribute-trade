@@ -14,17 +14,17 @@ void Connection::start() {
 
 void Connection::read() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
-    async_read_until(m_socket, *(buffer.get()), '\n', bind(&Connection::onRegionRead,
-                                                           shared_from_this(),
-                                                           buffer,
-                                                           _1
-                                                           ));
+    async_read_until(m_socket, *buffer, '\n', bind(&Connection::onRegionRead,
+                                                   shared_from_this(),
+                                                   buffer,
+                                                   _1
+                                                   ));
 }
 
 void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
     mylog(DEBUG, "onRegionRead:", er.message());
     if (!er) {
-        std::istream is(&(*buffer.get()));
+        std::istream is(&(*buffer));
         string message;
         while (std::getline(is, message)) {
             mylog(INFO, "Received from region:", message);
@@ -74,7 +74,6 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
         }
         read();
     } else {
-
         mylog(ERROR, "Region down:", er.message());
     }
 }
@@ -96,10 +95,10 @@ void Connection::sendCommandToMaster() {
     std::shared_ptr<string> masterDatacanterWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to master datacenter");
     m_sendCommands.pop();
-    async_write(m_socket, boost::asio::buffer(*(masterDatacanterWriteBuffer.get())), bind(&Connection::onSendCommandToMaster,
-                                                                                           shared_from_this(),
-                                                                                           masterDatacanterWriteBuffer,
-                                                                                           _1));
+    m_socket.async_send(boost::asio::buffer(*masterDatacanterWriteBuffer), bind(&Connection::onSendCommandToMaster,
+                                                                                shared_from_this(),
+                                                                                masterDatacanterWriteBuffer,
+                                                                                _1));
 }
 
 void Connection::onSendCommandToMaster(std::shared_ptr<string> buffer, const bs::error_code& er) {
