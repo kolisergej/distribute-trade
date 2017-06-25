@@ -7,8 +7,6 @@ shared_ptr<Connection> Connection::createConnection(io_service& service)
 }
 
 void Connection::start() {
-    m_sendReserveDatacentersTimer.expires_from_now(boost::posix_time::seconds(1));
-    m_sendReserveDatacentersTimer.async_wait(std::bind(&Connection::onSendTimer, shared_from_this(), _1));
     read();
 }
 
@@ -16,16 +14,18 @@ void Connection::read() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
     async_read_until(m_socket, *(buffer.get()), '\n', bind(&Connection::onDatacenterRead,
                                                            shared_from_this(),
+                                                           buffer,
                                                            _1
                                                            ));
 }
 
-void Connection::onDatacenterRead(const bs::error_code& er) {
+void Connection::onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
     mylog(DEBUG, "onDatacenterRead:", er.message());
     if (!er) {
+        // Need this callback for handle reserve datacenter disconnect
+        // But in case of reverse communication you can process here its' messages
+        (void) buffer;
         read();
-    } else {
-        m_sendReserveDatacentersTimer.cancel();
     }
 }
 
@@ -34,30 +34,31 @@ boost::asio::ip::tcp::socket& Connection::socket() {
 }
 
 Connection::Connection(io_service& service):
-    m_socket(service),
-    m_sendReserveDatacentersTimer(service)
+    m_socket(service)
 {
 }
 
-void Connection::onSendTimer(const bs::error_code& er) {
-    if (!er) {
-        m_sendReserveDatacentersTimer.cancel();
-        lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
-        if (m_sendReserveDatacentersCommands.empty()) {
-            m_sendReserveDatacentersTimer.expires_from_now(boost::posix_time::seconds(1));
-            m_sendReserveDatacentersTimer.async_wait(std::bind(&Connection::onSendTimer, shared_from_this(), _1));
-            return;
-        }
-        const string command = m_sendReserveDatacentersCommands.front();
-        m_sendReserveDatacentersCommands.pop();
-        mylog(DEBUG, "Sending", command, "to reserve datacenter");
-        async_write(m_socket, boost::asio::buffer(command), std::bind(&Connection::onSendTimer,
-                                                                               shared_from_this(),
-                                                                               _1));
-    }
-}
-
-void Connection::sendCommandToReserve(const string& command) {
+void Connection::pushCommandToReserve(const string& command) {
     lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
     m_sendReserveDatacentersCommands.push(command);
+    m_socket.get_io_service().post(bind(&Connection::sendCommandToReserve, shared_from_this()));
+}
+
+void Connection::sendCommandToReserve() {
+    lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
+    const string& command = m_sendReserveDatacentersCommands.front();
+    std::shared_ptr<string> reserveDatacanterWriteBuffer = std::make_shared<string>(command);
+    mylog(DEBUG, "Sending", command, "to reserve datacenter");
+    m_sendReserveDatacentersCommands.pop();
+    async_write(m_socket, boost::asio::buffer(*(reserveDatacanterWriteBuffer.get())), bind(&Connection::onSendCommandToReserve,
+                                                                                           shared_from_this(),
+                                                                                           reserveDatacanterWriteBuffer,
+                                                                                           _1));
+}
+
+void Connection::onSendCommandToReserve(std::shared_ptr<string> buffer, const bs::error_code& er) {
+    (void)buffer;
+    if (er) {
+        mylog(DEBUG, "onSendCommandToReserve error:", er.message());
+    }
 }

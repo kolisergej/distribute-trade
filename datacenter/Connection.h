@@ -9,18 +9,18 @@ public:
 
     void start();
     network::socket& socket();
-    void sendCommandToReserve(const string& command);
+    void pushCommandToReserve(const string& command);
 
 private:
     void read();
-    void onDatacenterRead(const bs::error_code& er);
-    void onSendTimer(const bs::error_code& er);
+    void onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);
+    void sendCommandToReserve();
+    void onSendCommandToReserve(std::shared_ptr<std::string> buffer, const bs::error_code& er);
 
     explicit Connection(io_service& service);
 
     network::socket m_socket;
     queue<string> m_sendReserveDatacentersCommands;
-    boost::asio::deadline_timer m_sendReserveDatacentersTimer;
     mutex m_sendReserveDatacentersMutex;
 };
 

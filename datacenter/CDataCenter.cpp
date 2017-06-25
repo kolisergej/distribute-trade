@@ -12,7 +12,6 @@ CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenter
     m_acceptor(m_service, network::endpoint(network::v4(), m_dataCenters[m_selfId].m_port)),
     m_serverReconnectTimer(m_service),
     m_datacentersConnectionsCheckTimer(m_service),
-    m_sendServerCommandsTimer(m_service),
     m_connectedToServer(false),
     m_socket(make_unique<network::socket>(m_service))
 {
@@ -54,8 +53,6 @@ void CDataCenter::networkInit() {
 
         m_datacentersConnectionsCheckTimer.expires_from_now(boost::posix_time::seconds(1));
         m_datacentersConnectionsCheckTimer.async_wait(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1));
-        m_sendServerCommandsTimer.expires_from_now(boost::posix_time::seconds(1));
-        m_sendServerCommandsTimer.async_wait(std::bind(&CDataCenter::onSendTimer, this, _1));
     } else {
         mylog(INFO, "I'm reserve datacenter, connecting to master", masterNode.m_address, ':', masterNode.m_port);
         const network::endpoint ep(boost::asio::ip::address::from_string(masterNode.m_address), masterNode.m_port);
@@ -79,9 +76,9 @@ int CDataCenter::tradeAnswerProcess(istringstream& iss) {
         if (it != m_transactionIdSum.end()) {
             transactionSum = it->second;
         } else {
-//            If we here, it means that master datacenter was down
-//            and it had no time for send book command to reserve due to lots of reserved datacenters or network latency
-//            But send transaction to server. Such case we discard all our m_transactionIdSums and assign hard balance
+            //            If we here, it means that master datacenter was down
+            //            and it had no time for send book command to reserve due to lots of reserved datacenters or network latency
+            //            But send transaction to server. Such case we discard all our m_transactionIdSums and assign hard balance
             m_transactionIdSum.clear();
             transactionSum = sum;
             mylog(INFO, "Hard assign transaction sum", transactionSum);
@@ -93,15 +90,22 @@ int CDataCenter::tradeAnswerProcess(istringstream& iss) {
         }
         m_transactionIdSum.erase(transactionId);
         const int totalTransactionSum = std::accumulate(std::begin(m_transactionIdSum),
-                                                 std::end(m_transactionIdSum),
-                                                 0,
-                                                 [] (int value, auto p) { return value + p.second; }
+                                                        std::end(m_transactionIdSum),
+                                                        0,
+                                                        [] (int value, auto p) { return value + p.second; }
         );
         mylog(INFO, "Transaction id:", transactionId,
               success ? "success." : "failed.",
               "Your current balance:", m_balance, ". In processing:", totalTransactionSum);
     }
     return transactionId;
+}
+
+void CDataCenter::setSocketOptions() {
+    network::socket::reuse_address reuseAddress(true);
+    network::socket::keep_alive keepAlive(true);
+    m_socket->set_option(reuseAddress);
+    m_socket->set_option(keepAlive);
 }
 
 ////////////////////////****** Master part ******////////////////////////
@@ -126,8 +130,9 @@ void CDataCenter::handleServerConnection(const bs::error_code& er) {
     if (!er) {
         m_connectedToServer = true;
         mylog(INFO, "Handle server connection");
+        setSocketOptions();
         string initServerMessage("setRegion " + m_region + '\n');
-        sendServerMessage(std::move(initServerMessage));
+        pushServerMessage(std::move(initServerMessage));
         serverRead();
     } else {
         m_connectedToServer = false;
@@ -168,7 +173,7 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
                 const int transactionId = tradeAnswerProcess(iss);
                 sendReserveDatacentersCommand(message + '\n');
                 string processedMessage("processed " + std::to_string(transactionId) + "\n");
-                sendServerMessage(std::move(processedMessage));
+                pushServerMessage(std::move(processedMessage));
             }
         }
         serverRead();
@@ -181,26 +186,28 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
     }
 }
 
-void CDataCenter::sendServerMessage(string&& message) {
+void CDataCenter::pushServerMessage(string&& message) {
     lock_guard<mutex> lock(m_serverCommandsMutex);
     m_serverCommands.push(message);
+    m_socket->get_io_service().post(std::bind(&CDataCenter::sendCommandToServer, this));
 }
 
-void CDataCenter::onSendTimer(const bs::error_code& er) {
-    if (!er) {
-        m_sendServerCommandsTimer.cancel();
-        lock_guard<mutex> lock(m_serverCommandsMutex);
-        if (m_serverCommands.empty()) {
-            m_sendServerCommandsTimer.expires_from_now(boost::posix_time::seconds(1));
-            m_sendServerCommandsTimer.async_wait(std::bind(&CDataCenter::onSendTimer, this, _1));
-            return;
-        }
-        const string command = m_serverCommands.front();
-        m_serverCommands.pop();
-        mylog(DEBUG, "Sending", command, "to server");
-        async_write(*(m_socket.get()), boost::asio::buffer(command), std::bind(&CDataCenter::onSendTimer,
-                                                                               this,
-                                                                               _1));
+void CDataCenter::sendCommandToServer() {
+    lock_guard<mutex> lock(m_serverCommandsMutex);
+    const string& command = m_serverCommands.front();
+    std::shared_ptr<string> serverWriteBuffer = std::make_shared<string>(command);
+    mylog(DEBUG, "Sending", command, "to server");
+    m_serverCommands.pop();
+    async_write(*(m_socket.get()), boost::asio::buffer(*(serverWriteBuffer.get())), bind(&CDataCenter::onSendCommandToServer,
+                                                                                this,
+                                                                                serverWriteBuffer,
+                                                                                _1));
+}
+
+void CDataCenter::onSendCommandToServer(std::shared_ptr<string> buffer, const bs::error_code& er) {
+    (void)buffer;
+    if (er) {
+        mylog(DEBUG, "onSendCommandToServer error:", er.message());
     }
 }
 
@@ -232,6 +239,7 @@ void CDataCenter::onConnectionsCheckTimer(const bs::error_code& er) {
 void CDataCenter::onMasterConnect(const bs::error_code& er) {
     if (!er) {
         mylog(INFO, "Connected with master");
+        setSocketOptions();
         readMaster();
     } else {
         mylog(ERROR, "Master connection error:", er.message());
@@ -266,9 +274,9 @@ void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const 
                     lock_guard<mutex> lock(m_balanceMutex);
                     m_balance += sum;
                     const int totalTransactionSum = std::accumulate(std::begin(m_transactionIdSum),
-                                                             std::end(m_transactionIdSum),
-                                                             0,
-                                                             [] (int value, auto p) { return value + p.second; }
+                                                                    std::end(m_transactionIdSum),
+                                                                    0,
+                                                                    [] (int value, auto p) { return value + p.second; }
                     );
                     mylog(INFO, "Your current balance:", m_balance, ". In processing: ", totalTransactionSum);
                 }
@@ -301,7 +309,7 @@ void CDataCenter::sendReserveDatacentersCommand(const string& command) {
         std::shared_ptr<Connection> strongConnection = datacenterConnection.lock();
         // Ensure connection is valid, because in another thread it can be disconnected
         if (strongConnection) {
-            strongConnection->sendCommandToReserve(command);
+            strongConnection->pushCommandToReserve(command);
         }
     }
 }
@@ -327,9 +335,9 @@ void CDataCenter::changeBalance(int sum) {
         lock_guard<mutex> lock(m_balanceMutex);
         m_balance += sum;
         const int totalTransactionSum = std::accumulate(std::begin(m_transactionIdSum),
-                                            std::end(m_transactionIdSum),
-                                            0,
-                                            [] (int value, auto p) { return value + p.second; }
+                                                        std::end(m_transactionIdSum),
+                                                        0,
+                                                        [] (int value, auto p) { return value + p.second; }
         );
         mylog(INFO, "Your current balance:", m_balance, ". In processing:", totalTransactionSum);
     }
@@ -344,9 +352,9 @@ void CDataCenter::makeTrade(int sum) {
     {
         lock_guard<mutex> lock(m_balanceMutex);
         const int totalTransactionSum = std::accumulate(std::begin(m_transactionIdSum),
-                                            std::end(m_transactionIdSum),
-                                            0,
-                                            [] (int value, auto p) { return value + p.second; }
+                                                        std::end(m_transactionIdSum),
+                                                        0,
+                                                        [] (int value, auto p) { return value + p.second; }
         );
         if (m_balance < sum + totalTransactionSum) {
             mylog(INFO, "Your have no enough money");
@@ -356,10 +364,10 @@ void CDataCenter::makeTrade(int sum) {
         m_transactionIdSum[m_lastTransactionId] = sum;
     }
     mylog(INFO, "During trade operation", sum, "booked. Transaction id =", m_lastTransactionId);
+    string makeTradeCommand("makeTrade " + std::to_string(m_lastTransactionId) + " " + std::to_string(sum) + '\n');
+    pushServerMessage(std::move(makeTradeCommand));
     const string bookBalanceCommand("book " + std::to_string(m_lastTransactionId) + " " + std::to_string(sum) + '\n');
     sendReserveDatacentersCommand(bookBalanceCommand);
-    string makeTradeCommand("makeTrade " + std::to_string(m_lastTransactionId) + " " + std::to_string(sum) + '\n');
-    sendServerMessage(std::move(makeTradeCommand));
 }
 
 /////////////////////////////////////////////////////////////////////////

@@ -30,6 +30,7 @@ private:
 
     void networkInit();
     int tradeAnswerProcess(istringstream& iss);
+    void setSocketOptions();
 
 
 ////////////////////////****** Master part ******////////////////////////
@@ -38,7 +39,6 @@ private:
     network::acceptor m_acceptor;
     boost::asio::deadline_timer m_serverReconnectTimer;
     boost::asio::deadline_timer m_datacentersConnectionsCheckTimer;
-    boost::asio::deadline_timer m_sendServerCommandsTimer;
     vector<weak_ptr<Connection>> m_datacentersConnection;
     mutex m_datacenterConnectionsMutex;
     mutex m_serverCommandsMutex;
@@ -50,8 +50,9 @@ private:
     void onServerReconnect(const bs::error_code& er);
 
     void serverRead();
-    void sendServerMessage(string&& message);
-    void onSendTimer(const bs::error_code& er);
+    void pushServerMessage(string&& message);
+    void sendCommandToServer();
+    void onSendCommandToServer(std::shared_ptr<string> buffer, const bs::error_code& er);
     void onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);
     void onConnectionsCheckTimer(const bs::error_code& er);
 
