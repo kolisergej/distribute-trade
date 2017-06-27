@@ -43,11 +43,14 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
                               transaction.first,
                               transaction.second.first,
                               transaction.second.second);
+                        const bool empty = m_sendCommands.empty();
                         m_sendCommands.push(string("tradeAnswer " +
                                                    std::to_string(transaction.first) + " " +
                                                    std::to_string(transaction.second.first) + " " +
                                                    std::to_string(transaction.second.second) +'\n'));
-                        m_socket.get_io_service().post(bind(&Connection::sendCommandToMaster, shared_from_this()));
+                        if (empty) {
+                            m_socket.get_io_service().post(bind(&Connection::onPushCommandToMaster, shared_from_this()));
+                        }
                     }
                 }
             } else if (command == "makeTrade") {
@@ -62,8 +65,11 @@ void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const b
                                                 std::to_string(succeed) + '\n');
                 {
                     lock_guard<mutex> lock(m_sendCommandsMutex);
+                    const bool empty = m_sendCommands.empty();
                     m_sendCommands.push(tradeResultMessage);
-                    m_socket.get_io_service().post(bind(&Connection::sendCommandToMaster, shared_from_this()));
+                    if (empty) {
+                        m_socket.get_io_service().post(bind(&Connection::onPushCommandToMaster, shared_from_this()));
+                    }
                 }
                 m_pTradeServer->addActiveTransaction(m_region, transactionId, sum, succeed);
             } else if (command == "processed") {
@@ -89,21 +95,31 @@ Connection::Connection(io_service& service, CTradeServer* pTradeServer):
 {
 }
 
-void Connection::sendCommandToMaster() {
+void Connection::onPushCommandToMaster() {
     lock_guard<mutex> lock(m_sendCommandsMutex);
+    sendCommandToMaster();
+}
+
+void Connection::sendCommandToMaster() {
     const string& command = m_sendCommands.front();
     std::shared_ptr<string> masterDatacanterWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to master datacenter");
     m_sendCommands.pop();
-    m_socket.async_send(boost::asio::buffer(*masterDatacanterWriteBuffer), bind(&Connection::onSendCommandToMaster,
-                                                                                shared_from_this(),
-                                                                                masterDatacanterWriteBuffer,
-                                                                                _1));
+    async_write(m_socket, boost::asio::buffer(*masterDatacanterWriteBuffer), bind(&Connection::onSendCommandToMaster,
+                                                                                  shared_from_this(),
+                                                                                  masterDatacanterWriteBuffer,
+                                                                                  _1));
 }
 
 void Connection::onSendCommandToMaster(std::shared_ptr<string> buffer, const bs::error_code& er) {
     (void)buffer;
-    if (er) {
+    if (!er) {
+        lock_guard<mutex> lock(m_sendCommandsMutex);
+        if (m_sendCommands.empty()) {
+            return;
+        }
+        sendCommandToMaster();
+    } else {
         mylog(DEBUG, "onSendCommandToMaster error:", er.message());
     }
 }

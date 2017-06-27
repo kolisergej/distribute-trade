@@ -15,6 +15,7 @@ public:
 private:
     void read();
     void onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);
+    void onPushCommandToMaster();
     void sendCommandToMaster();
     void onSendCommandToMaster(std::shared_ptr<std::string> buffer, const bs::error_code& er);
 

@@ -40,25 +40,37 @@ Connection::Connection(io_service& service):
 
 void Connection::pushCommandToReserve(const string& command) {
     lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
+    const bool empty = m_sendReserveDatacentersCommands.empty();
     m_sendReserveDatacentersCommands.push(command);
-    m_socket.get_io_service().post(bind(&Connection::sendCommandToReserve, shared_from_this()));
+    if (empty) {
+        m_socket.get_io_service().post(bind(&Connection::onPushCommandToReserve, shared_from_this()));
+    }
+}
+
+void Connection::onPushCommandToReserve() {
+    lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
+    sendCommandToReserve();
 }
 
 void Connection::sendCommandToReserve() {
-    lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
     const string& command = m_sendReserveDatacentersCommands.front();
     std::shared_ptr<string> reserveDatacanterWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to reserve datacenter");
     m_sendReserveDatacentersCommands.pop();
-    m_socket.async_send(boost::asio::buffer(*reserveDatacanterWriteBuffer), bind(&Connection::onSendCommandToReserve,
-                                                                                 shared_from_this(),
-                                                                                 reserveDatacanterWriteBuffer,
-                                                                                 _1));
+    async_write(m_socket, boost::asio::buffer(*reserveDatacanterWriteBuffer), bind(&Connection::onSendCommandToReserve,
+                                                                                   shared_from_this(),
+                                                                                   reserveDatacanterWriteBuffer,
+                                                                                   _1));
 }
 
 void Connection::onSendCommandToReserve(std::shared_ptr<string> buffer, const bs::error_code& er) {
     (void)buffer;
-    if (er) {
+    if (!er) {
+        if (m_sendReserveDatacentersCommands.empty()) {
+            return;
+        }
+        sendCommandToReserve();
+    } else {
         mylog(DEBUG, "onSendCommandToReserve error:", er.message());
     }
 }

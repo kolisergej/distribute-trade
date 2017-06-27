@@ -14,6 +14,8 @@ public:
 private:
     void read();
     void onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);
+    void pushCommandToReserve();
+    void onPushCommandToReserve();
     void sendCommandToReserve();
     void onSendCommandToReserve(std::shared_ptr<std::string> buffer, const bs::error_code& er);
 

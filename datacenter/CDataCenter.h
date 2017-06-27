@@ -51,6 +51,7 @@ private:
 
     void serverRead();
     void pushServerMessage(string&& message);
+    void onPushCommandToServer();
     void sendCommandToServer();
     void onSendCommandToServer(std::shared_ptr<string> buffer, const bs::error_code& er);
     void onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);

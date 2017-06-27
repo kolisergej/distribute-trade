@@ -188,25 +188,38 @@ void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const 
 
 void CDataCenter::pushServerMessage(string&& message) {
     lock_guard<mutex> lock(m_serverCommandsMutex);
+    const bool empty = m_serverCommands.empty();
     m_serverCommands.push(message);
-    m_socket->get_io_service().post(std::bind(&CDataCenter::sendCommandToServer, this));
+    if (empty) {
+        m_socket->get_io_service().post(std::bind(&CDataCenter::onPushCommandToServer, this));
+    }
+}
+
+void CDataCenter::onPushCommandToServer() {
+    lock_guard<mutex> lock(m_serverCommandsMutex);
+    sendCommandToServer();
 }
 
 void CDataCenter::sendCommandToServer() {
-    lock_guard<mutex> lock(m_serverCommandsMutex);
     const string& command = m_serverCommands.front();
     std::shared_ptr<string> serverWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to server");
     m_serverCommands.pop();
-    m_socket->async_send(boost::asio::buffer(*serverWriteBuffer), bind(&CDataCenter::onSendCommandToServer,
-                                                                       this,
-                                                                       serverWriteBuffer,
-                                                                       _1));
+    async_write(*m_socket, boost::asio::buffer(*serverWriteBuffer), bind(&CDataCenter::onSendCommandToServer,
+                                                                         this,
+                                                                         serverWriteBuffer,
+                                                                         _1));
 }
 
 void CDataCenter::onSendCommandToServer(std::shared_ptr<string> buffer, const bs::error_code& er) {
     (void)buffer;
-    if (er) {
+    if (!er) {
+        lock_guard<mutex> lock(m_serverCommandsMutex);
+        if (m_serverCommands.empty()) {
+            return;
+        }
+        sendCommandToServer();
+    } else {
         mylog(DEBUG, "onSendCommandToServer error:", er.message());
     }
 }
