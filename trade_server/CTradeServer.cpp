@@ -29,7 +29,7 @@ void CTradeServer::start()
     }
 }
 
-void CTradeServer::handleRegionConnection(shared_ptr<Connection> connection, const bs::error_code& er) {
+void CTradeServer::handleRegionConnection(const shared_ptr<Connection>& connection, const bs::error_code& er) {
     if (!er) {
         mylog(INFO, "Handle region connection");
         connection->start();
@@ -41,7 +41,7 @@ void CTradeServer::handleRegionConnection(shared_ptr<Connection> connection, con
     }
 }
 
-void CTradeServer::addRegionConnection(const string& region, weak_ptr<Connection> connection) {
+void CTradeServer::addRegionConnection(const string& region, const weak_ptr<Connection>& connection) {
     lock_guard<mutex> lock(m_regionConnectionsMutex);
     m_regionConnection[region] = connection;
 }

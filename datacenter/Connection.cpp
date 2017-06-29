@@ -19,7 +19,7 @@ void Connection::read() {
                                                    ));
 }
 
-void Connection::onDatacenterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
+void Connection::onDatacenterRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er) {
     mylog(DEBUG, "onDatacenterRead:", er.message());
     if (!er) {
         // Need this callback for handle reserve datacenter disconnect
@@ -63,9 +63,10 @@ void Connection::sendCommandToReserve() {
                                                                                    _1));
 }
 
-void Connection::onSendCommandToReserve(std::shared_ptr<string> buffer, const bs::error_code& er) {
+void Connection::onSendCommandToReserve(const std::shared_ptr<string>& buffer, const bs::error_code& er) {
     (void)buffer;
     if (!er) {
+        lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
         if (m_sendReserveDatacentersCommands.empty()) {
             return;
         }

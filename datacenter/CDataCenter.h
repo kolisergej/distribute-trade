@@ -45,7 +45,7 @@ private:
     queue<string> m_serverCommands;
     bool m_connectedToServer;
 
-    void handleReserveDatacenterConnection(shared_ptr<Connection> connection, const bs::error_code& er);
+    void handleReserveDatacenterConnection(const shared_ptr<Connection>& connection, const bs::error_code& er);
     void handleServerConnection(const bs::error_code& er);
     void onServerReconnect(const bs::error_code& er);
 
@@ -53,8 +53,8 @@ private:
     void pushServerMessage(string&& message);
     void onPushCommandToServer();
     void sendCommandToServer();
-    void onSendCommandToServer(std::shared_ptr<string> buffer, const bs::error_code& er);
-    void onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);
+    void onSendCommandToServer(const std::shared_ptr<std::__1::string>& buffer, const bs::error_code& er);
+    void onServerRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er);
     void onConnectionsCheckTimer(const bs::error_code& er);
 
 ////////////////////////////////////////////////////////////////////////
@@ -69,7 +69,7 @@ private:
 
     void onMasterConnect(const bs::error_code& er);
     void readMaster();
-    void onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er);
+    void onMasterRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er);
     void connectNextMaster();
     void sendReserveDatacentersCommand(const string& command);
 

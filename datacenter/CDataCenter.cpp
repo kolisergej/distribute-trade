@@ -110,7 +110,7 @@ void CDataCenter::setSocketOptions() {
 
 ////////////////////////****** Master part ******////////////////////////
 
-void CDataCenter::handleReserveDatacenterConnection(shared_ptr<Connection> connection, const bs::error_code& er) {
+void CDataCenter::handleReserveDatacenterConnection(const shared_ptr<Connection>& connection, const bs::error_code& er) {
     if (!er) {
         mylog(INFO, "Handle reserve datacenter connection");
         {
@@ -160,7 +160,7 @@ void CDataCenter::onServerReconnect(const bs::error_code& er) {
     }
 }
 
-void CDataCenter::onServerRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
+void CDataCenter::onServerRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er) {
     mylog(DEBUG, "onServerRead:", er.message());
     if (!er) {
         std::istream is(&(*buffer));
@@ -211,7 +211,7 @@ void CDataCenter::sendCommandToServer() {
                                                                          _1));
 }
 
-void CDataCenter::onSendCommandToServer(std::shared_ptr<string> buffer, const bs::error_code& er) {
+void CDataCenter::onSendCommandToServer(const std::shared_ptr<string>& buffer, const bs::error_code& er) {
     (void)buffer;
     if (!er) {
         lock_guard<mutex> lock(m_serverCommandsMutex);
@@ -270,7 +270,7 @@ void CDataCenter::readMaster() {
                                                          _1));
 }
 
-void CDataCenter::onMasterRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
+void CDataCenter::onMasterRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er) {
     mylog(DEBUG, "onMasterRead:", er.message());
     if (!er) {
         std::istream is(&(*buffer));

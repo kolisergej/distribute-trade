@@ -21,7 +21,7 @@ void Connection::read() {
                                                    ));
 }
 
-void Connection::onRegionRead(shared_ptr<boost::asio::streambuf> buffer, const bs::error_code& er) {
+void Connection::onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er) {
     mylog(DEBUG, "onRegionRead:", er.message());
     if (!er) {
         std::istream is(&(*buffer));
@@ -111,7 +111,7 @@ void Connection::sendCommandToMaster() {
                                                                                   _1));
 }
 
-void Connection::onSendCommandToMaster(std::shared_ptr<string> buffer, const bs::error_code& er) {
+void Connection::onSendCommandToMaster(const std::shared_ptr<string>& buffer, const bs::error_code& er) {
     (void)buffer;
     if (!er) {
         lock_guard<mutex> lock(m_sendCommandsMutex);
