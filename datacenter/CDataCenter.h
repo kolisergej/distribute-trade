@@ -53,7 +53,7 @@ private:
     void pushServerMessage(string&& message);
     void onPushCommandToServer();
     void sendCommandToServer();
-    void onSendCommandToServer(const std::shared_ptr<std::__1::string>& buffer, const bs::error_code& er);
+    void onSendCommandToServer(const std::shared_ptr<std::string>& buffer, const bs::error_code& er);
     void onServerRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er);
     void onConnectionsCheckTimer(const bs::error_code& er);
 

@@ -17,7 +17,7 @@ private:
     void pushCommandToReserve();
     void onPushCommandToReserve();
     void sendCommandToReserve();
-    void onSendCommandToReserve(const std::shared_ptr<std::__1::string>& buffer, const bs::error_code& er);
+    void onSendCommandToReserve(const std::shared_ptr<std::string>& buffer, const bs::error_code& er);
 
     explicit Connection(io_service& service);
 

@@ -17,7 +17,7 @@ private:
     void onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er);
     void onPushCommandToMaster();
     void sendCommandToMaster();
-    void onSendCommandToMaster(const std::shared_ptr<std::__1::string>& buffer, const bs::error_code& er);
+    void onSendCommandToMaster(const std::shared_ptr<std::string>& buffer, const bs::error_code& er);
 
     Connection(io_service& service, CTradeServer* pTradeServer);
     network::socket m_socket;
