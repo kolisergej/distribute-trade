@@ -14,11 +14,11 @@ void Connection::start() {
 
 void Connection::read() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
-    async_read_until(m_socket, *buffer, '\n', bind(&Connection::onRegionRead,
-                                                   shared_from_this(),
-                                                   buffer,
-                                                   _1
-                                                   ));
+    async_read_until(m_socket, *buffer, '\n', m_strand.wrap(bind(&Connection::onRegionRead,
+                                                                 shared_from_this(),
+                                                                 buffer,
+                                                                 _1
+                                                                 )));
 }
 
 void Connection::onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er) {
@@ -35,7 +35,6 @@ void Connection::onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, 
                 iss >> m_region;
                 m_pTradeServer->addRegionConnection(m_region, weak_ptr<Connection>(shared_from_this()));
                 {
-                    lock_guard<mutex> lock(m_sendCommandsMutex);
                     auto activeTransactions = m_pTradeServer->getTransactionsForRegion(m_region);
                     for (auto& transaction: activeTransactions) {
                         mylog(INFO, "Send active transaction:",
@@ -49,7 +48,7 @@ void Connection::onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, 
                                                    std::to_string(transaction.second.first) + " " +
                                                    std::to_string(transaction.second.second) +'\n'));
                         if (empty) {
-                            m_socket.get_io_service().post(bind(&Connection::onPushCommandToMaster, shared_from_this()));
+                            m_socket.get_io_service().post(m_strand.wrap(bind(&Connection::onPushCommandToMaster, shared_from_this())));
                         }
                     }
                 }
@@ -63,13 +62,10 @@ void Connection::onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, 
                                                 std::to_string(transactionId) + " " +
                                                 std::to_string(sum) + " " +
                                                 std::to_string(succeed) + '\n');
-                {
-                    lock_guard<mutex> lock(m_sendCommandsMutex);
-                    const bool empty = m_sendCommands.empty();
-                    m_sendCommands.push(tradeResultMessage);
-                    if (empty) {
-                        m_socket.get_io_service().post(bind(&Connection::onPushCommandToMaster, shared_from_this()));
-                    }
+                const bool empty = m_sendCommands.empty();
+                m_sendCommands.push(tradeResultMessage);
+                if (empty) {
+                    m_socket.get_io_service().post(m_strand.wrap(bind(&Connection::onPushCommandToMaster, shared_from_this())));
                 }
                 m_pTradeServer->addActiveTransaction(m_region, transactionId, sum, succeed);
             } else if (command == "processed") {
@@ -91,12 +87,12 @@ boost::asio::ip::tcp::socket& Connection::socket() {
 Connection::Connection(io_service& service, CTradeServer* pTradeServer):
     m_socket(service),
     m_pTradeServer(pTradeServer),
-    m_tradeLogic(std::bind(std::uniform_int_distribution<>(0,1), std::default_random_engine()))
+    m_tradeLogic(std::bind(std::uniform_int_distribution<>(0,1), std::default_random_engine())),
+    m_strand(service)
 {
 }
 
 void Connection::onPushCommandToMaster() {
-    lock_guard<mutex> lock(m_sendCommandsMutex);
     sendCommandToMaster();
 }
 
@@ -105,16 +101,15 @@ void Connection::sendCommandToMaster() {
     std::shared_ptr<string> masterDatacanterWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to master datacenter");
     m_sendCommands.pop();
-    async_write(m_socket, boost::asio::buffer(*masterDatacanterWriteBuffer), bind(&Connection::onSendCommandToMaster,
-                                                                                  shared_from_this(),
-                                                                                  masterDatacanterWriteBuffer,
-                                                                                  _1));
+    async_write(m_socket, boost::asio::buffer(*masterDatacanterWriteBuffer), m_strand.wrap(bind(&Connection::onSendCommandToMaster,
+                                                                                                shared_from_this(),
+                                                                                                masterDatacanterWriteBuffer,
+                                                                                                _1)));
 }
 
 void Connection::onSendCommandToMaster(const std::shared_ptr<string>& buffer, const bs::error_code& er) {
     (void)buffer;
     if (!er) {
-        lock_guard<mutex> lock(m_sendCommandsMutex);
         if (m_sendCommands.empty()) {
             return;
         }

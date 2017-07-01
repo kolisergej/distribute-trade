@@ -27,6 +27,7 @@ private:
 
     int m_masterId;
     io_service m_service;
+    boost::asio::strand m_strand;
 
     void networkInit();
     int tradeAnswerProcess(istringstream& iss);
@@ -40,8 +41,6 @@ private:
     boost::asio::deadline_timer m_serverReconnectTimer;
     boost::asio::deadline_timer m_datacentersConnectionsCheckTimer;
     vector<weak_ptr<Connection>> m_datacentersConnection;
-    mutex m_datacenterConnectionsMutex;
-    mutex m_serverCommandsMutex;
     queue<string> m_serverCommands;
     bool m_connectedToServer;
 
@@ -50,8 +49,7 @@ private:
     void onServerReconnect(const bs::error_code& er);
 
     void serverRead();
-    void pushServerMessage(string&& message);
-    void onPushCommandToServer();
+    void pushServerMessage(const std::__1::string& message);
     void sendCommandToServer();
     void onSendCommandToServer(const std::shared_ptr<std::string>& buffer, const bs::error_code& er);
     void onServerRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er);

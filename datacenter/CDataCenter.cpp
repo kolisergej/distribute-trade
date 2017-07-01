@@ -8,6 +8,7 @@ CDataCenter::CDataCenter(int selfId, map<int, DataCenterConfigInfo>&& dataCenter
     m_balance(balance),
     m_lastTransactionId(0),
     m_service(),
+    m_strand(m_service),
     m_serverEndpoint(boost::asio::ip::address::from_string(serverAddress), serverPort),
     m_acceptor(m_service, network::endpoint(network::v4(), m_dataCenters[m_selfId].m_port)),
     m_serverReconnectTimer(m_service),
@@ -43,16 +44,16 @@ void CDataCenter::networkInit() {
     if (m_masterId == m_selfId) {
         mylog(INFO, "I'm master datacenter, listen", masterNode.m_port);
         shared_ptr<Connection> connection = Connection::createConnection(m_service);
-        m_acceptor.async_accept(connection->socket(), std::bind(&CDataCenter::handleReserveDatacenterConnection,
-                                                                this,
-                                                                connection,
-                                                                _1));
+        m_acceptor.async_accept(connection->socket(), m_strand.wrap(std::bind(&CDataCenter::handleReserveDatacenterConnection,
+                                                                              this,
+                                                                              connection,
+                                                                              _1)));
 
         m_serverReconnectTimer.expires_from_now(boost::posix_time::seconds(1));
         m_serverReconnectTimer.async_wait(std::bind(&CDataCenter::onServerReconnect, this, _1));
 
         m_datacentersConnectionsCheckTimer.expires_from_now(boost::posix_time::seconds(1));
-        m_datacentersConnectionsCheckTimer.async_wait(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1));
+        m_datacentersConnectionsCheckTimer.async_wait(m_strand.wrap(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1)));
     } else {
         mylog(INFO, "I'm reserve datacenter, connecting to master", masterNode.m_address, ':', masterNode.m_port);
         const network::endpoint ep(boost::asio::ip::address::from_string(masterNode.m_address), masterNode.m_port);
@@ -113,16 +114,13 @@ void CDataCenter::setSocketOptions() {
 void CDataCenter::handleReserveDatacenterConnection(const shared_ptr<Connection>& connection, const bs::error_code& er) {
     if (!er) {
         mylog(INFO, "Handle reserve datacenter connection");
-        {
-            lock_guard<mutex> lock(m_datacenterConnectionsMutex);
-            m_datacentersConnection.push_back(connection);
-        }
+        m_datacentersConnection.push_back(connection);
         connection->start();
         shared_ptr<Connection> newConnection = Connection::createConnection(m_service);
-        m_acceptor.async_accept(newConnection->socket(), std::bind(&CDataCenter::handleReserveDatacenterConnection,
-                                                                   this,
-                                                                   newConnection,
-                                                                   _1));
+        m_acceptor.async_accept(newConnection->socket(), m_strand.wrap(std::bind(&CDataCenter::handleReserveDatacenterConnection,
+                                                                                 this,
+                                                                                 newConnection,
+                                                                                 _1)));
     }
 }
 
@@ -132,7 +130,7 @@ void CDataCenter::handleServerConnection(const bs::error_code& er) {
         mylog(INFO, "Handle server connection");
         setSocketOptions();
         string initServerMessage("setRegion " + m_region + '\n');
-        pushServerMessage(std::move(initServerMessage));
+        m_socket->get_io_service().post(m_strand.wrap(bind(&CDataCenter::pushServerMessage, this, initServerMessage)));
         serverRead();
     } else {
         m_connectedToServer = false;
@@ -171,9 +169,9 @@ void CDataCenter::onServerRead(const shared_ptr<boost::asio::streambuf>& buffer,
             iss >> command;
             if (command == "tradeAnswer") {
                 const int transactionId = tradeAnswerProcess(iss);
-                sendReserveDatacentersCommand(message + '\n');
+                m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, message + '\n')));
                 string processedMessage("processed " + std::to_string(transactionId) + "\n");
-                pushServerMessage(std::move(processedMessage));
+                m_socket->get_io_service().post(m_strand.wrap(bind(&CDataCenter::pushServerMessage, this, processedMessage)));
             }
         }
         serverRead();
@@ -186,18 +184,12 @@ void CDataCenter::onServerRead(const shared_ptr<boost::asio::streambuf>& buffer,
     }
 }
 
-void CDataCenter::pushServerMessage(string&& message) {
-    lock_guard<mutex> lock(m_serverCommandsMutex);
+void CDataCenter::pushServerMessage(const string& message) {
     const bool empty = m_serverCommands.empty();
     m_serverCommands.push(message);
     if (empty) {
-        m_socket->get_io_service().post(std::bind(&CDataCenter::onPushCommandToServer, this));
+        m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendCommandToServer, this)));
     }
-}
-
-void CDataCenter::onPushCommandToServer() {
-    lock_guard<mutex> lock(m_serverCommandsMutex);
-    sendCommandToServer();
 }
 
 void CDataCenter::sendCommandToServer() {
@@ -205,16 +197,15 @@ void CDataCenter::sendCommandToServer() {
     std::shared_ptr<string> serverWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to server");
     m_serverCommands.pop();
-    async_write(*m_socket, boost::asio::buffer(*serverWriteBuffer), bind(&CDataCenter::onSendCommandToServer,
-                                                                         this,
-                                                                         serverWriteBuffer,
-                                                                         _1));
+    async_write(*m_socket, boost::asio::buffer(*serverWriteBuffer), m_strand.wrap(bind(&CDataCenter::onSendCommandToServer,
+                                                                                       this,
+                                                                                       serverWriteBuffer,
+                                                                                       _1)));
 }
 
 void CDataCenter::onSendCommandToServer(const std::shared_ptr<string>& buffer, const bs::error_code& er) {
     (void)buffer;
     if (!er) {
-        lock_guard<mutex> lock(m_serverCommandsMutex);
         if (m_serverCommands.empty()) {
             return;
         }
@@ -226,19 +217,16 @@ void CDataCenter::onSendCommandToServer(const std::shared_ptr<string>& buffer, c
 
 void CDataCenter::onConnectionsCheckTimer(const bs::error_code& er) {
     if (!er) {
-        {
-            lock_guard<mutex> lock(m_datacenterConnectionsMutex);
-            auto removeExpiredConnections = std::remove_if(m_datacentersConnection.begin(), m_datacentersConnection.end(), [](auto& connection) {
-                return connection.expired();
-            });
-            auto removed = std::distance(removeExpiredConnections, m_datacentersConnection.end());
-            if (removed > 0) {
-                mylog(INFO, "Removing", removed, "expired connections");
-            }
-            m_datacentersConnection.erase(removeExpiredConnections, m_datacentersConnection.end());
+        auto removeExpiredConnections = std::remove_if(m_datacentersConnection.begin(), m_datacentersConnection.end(), [](auto& connection) {
+            return connection.expired();
+        });
+        const auto removed = std::distance(removeExpiredConnections, m_datacentersConnection.end());
+        if (removed > 0) {
+            mylog(INFO, "Removing", removed, "expired connections");
         }
+        m_datacentersConnection.erase(removeExpiredConnections, m_datacentersConnection.end());
         m_datacentersConnectionsCheckTimer.expires_from_now(boost::posix_time::seconds(1));
-        m_datacentersConnectionsCheckTimer.async_wait(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1));
+        m_datacentersConnectionsCheckTimer.async_wait(m_strand.wrap(std::bind(&CDataCenter::onConnectionsCheckTimer, this, _1)));
     }
 }
 
@@ -317,7 +305,6 @@ void CDataCenter::onMasterRead(const shared_ptr<boost::asio::streambuf>& buffer,
 }
 
 void CDataCenter::sendReserveDatacentersCommand(const string& command) {
-    lock_guard<mutex> lock(m_datacenterConnectionsMutex);
     for (auto& datacenterConnection: m_datacentersConnection) {
         std::shared_ptr<Connection> strongConnection = datacenterConnection.lock();
         // Ensure connection is valid, because in another thread it can be disconnected
@@ -354,7 +341,7 @@ void CDataCenter::changeBalance(int sum) {
         );
         mylog(INFO, "Your current balance:", m_balance, ". In processing:", totalTransactionSum);
     }
-    sendReserveDatacentersCommand(setBalanceCommand);
+    m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, setBalanceCommand)));
 }
 
 void CDataCenter::makeTrade(int sum) {
@@ -378,9 +365,9 @@ void CDataCenter::makeTrade(int sum) {
     }
     mylog(INFO, "During trade operation", sum, "booked. Transaction id =", m_lastTransactionId);
     string makeTradeCommand("makeTrade " + std::to_string(m_lastTransactionId) + " " + std::to_string(sum) + '\n');
-    pushServerMessage(std::move(makeTradeCommand));
+    m_socket->get_io_service().post(m_strand.wrap(bind(&CDataCenter::pushServerMessage, this, makeTradeCommand)));
     const string bookBalanceCommand("book " + std::to_string(m_lastTransactionId) + " " + std::to_string(sum) + '\n');
-    sendReserveDatacentersCommand(bookBalanceCommand);
+    m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, bookBalanceCommand)));
 }
 
 /////////////////////////////////////////////////////////////////////////

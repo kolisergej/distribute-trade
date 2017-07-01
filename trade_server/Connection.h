@@ -24,7 +24,7 @@ private:
     string m_region;
     CTradeServer* m_pTradeServer;
     std::function<bool()> m_tradeLogic;
-    mutex m_sendCommandsMutex;
+    boost::asio::strand m_strand;
     queue<string> m_sendCommands;
 };
 

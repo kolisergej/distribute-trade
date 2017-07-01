@@ -13,10 +13,10 @@ void Connection::start() {
 void Connection::read() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
     async_read_until(m_socket, *buffer, '\n', bind(&Connection::onDatacenterRead,
-                                                   shared_from_this(),
-                                                   buffer,
-                                                   _1
-                                                   ));
+                                                                shared_from_this(),
+                                                                buffer,
+                                                                _1
+                                                                ));
 }
 
 void Connection::onDatacenterRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er) {
@@ -35,10 +35,12 @@ boost::asio::ip::tcp::socket& Connection::socket() {
 
 Connection::Connection(io_service& service):
     m_socket(service)
+//    m_strand(service)
 {
 }
 
 void Connection::pushCommandToReserve(const string& command) {
+    // We can avoid mutex here, if not call this function from anywhere
     lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
     const bool empty = m_sendReserveDatacentersCommands.empty();
     m_sendReserveDatacentersCommands.push(command);
