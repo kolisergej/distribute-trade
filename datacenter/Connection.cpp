@@ -35,7 +35,6 @@ boost::asio::ip::tcp::socket& Connection::socket() {
 
 Connection::Connection(io_service& service):
     m_socket(service)
-//    m_strand(service)
 {
 }
 

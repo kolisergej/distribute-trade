@@ -49,7 +49,7 @@ private:
     void onServerReconnect(const bs::error_code& er);
 
     void serverRead();
-    void pushServerMessage(const std::__1::string& message);
+    void pushServerMessage(const std::string& message);
     void sendCommandToServer();
     void onSendCommandToServer(const std::shared_ptr<std::string>& buffer, const bs::error_code& er);
     void onServerRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er);
