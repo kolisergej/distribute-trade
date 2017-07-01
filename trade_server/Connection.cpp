@@ -48,7 +48,7 @@ void Connection::onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, 
                                                    std::to_string(transaction.second.first) + " " +
                                                    std::to_string(transaction.second.second) +'\n'));
                         if (empty) {
-                            m_socket.get_io_service().post(m_strand.wrap(bind(&Connection::onPushCommandToMaster, shared_from_this())));
+                            m_strand.post(bind(&Connection::sendCommandToMaster, shared_from_this()));
                         }
                     }
                 }
@@ -65,7 +65,7 @@ void Connection::onRegionRead(const shared_ptr<boost::asio::streambuf>& buffer, 
                 const bool empty = m_sendCommands.empty();
                 m_sendCommands.push(tradeResultMessage);
                 if (empty) {
-                    m_socket.get_io_service().post(m_strand.wrap(bind(&Connection::onPushCommandToMaster, shared_from_this())));
+                    m_strand.post(bind(&Connection::sendCommandToMaster, shared_from_this()));
                 }
                 m_pTradeServer->addActiveTransaction(m_region, transactionId, sum, succeed);
             } else if (command == "processed") {
@@ -90,10 +90,6 @@ Connection::Connection(io_service& service, CTradeServer* pTradeServer):
     m_tradeLogic(std::bind(std::uniform_int_distribution<>(0,1), std::default_random_engine())),
     m_strand(service)
 {
-}
-
-void Connection::onPushCommandToMaster() {
-    sendCommandToMaster();
 }
 
 void Connection::sendCommandToMaster() {

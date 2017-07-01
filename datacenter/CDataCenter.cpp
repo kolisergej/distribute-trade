@@ -43,7 +43,7 @@ void CDataCenter::networkInit() {
     const auto& masterNode = m_dataCenters[m_masterId];
     if (m_masterId == m_selfId) {
         mylog(INFO, "I'm master datacenter, listen", masterNode.m_port);
-        shared_ptr<Connection> connection = Connection::createConnection(m_service);
+        shared_ptr<Connection> connection = Connection::createConnection(m_service, m_strand);
         m_acceptor.async_accept(connection->socket(), m_strand.wrap(std::bind(&CDataCenter::handleReserveDatacenterConnection,
                                                                               this,
                                                                               connection,
@@ -116,7 +116,7 @@ void CDataCenter::handleReserveDatacenterConnection(const shared_ptr<Connection>
         mylog(INFO, "Handle reserve datacenter connection");
         m_datacentersConnection.push_back(connection);
         connection->start();
-        shared_ptr<Connection> newConnection = Connection::createConnection(m_service);
+        shared_ptr<Connection> newConnection = Connection::createConnection(m_service, m_strand);
         m_acceptor.async_accept(newConnection->socket(), m_strand.wrap(std::bind(&CDataCenter::handleReserveDatacenterConnection,
                                                                                  this,
                                                                                  newConnection,
@@ -130,7 +130,7 @@ void CDataCenter::handleServerConnection(const bs::error_code& er) {
         mylog(INFO, "Handle server connection");
         setSocketOptions();
         string initServerMessage("setRegion " + m_region + '\n');
-        m_socket->get_io_service().post(m_strand.wrap(bind(&CDataCenter::pushServerMessage, this, initServerMessage)));
+        m_strand.dispatch(bind(&CDataCenter::pushServerMessage, this, initServerMessage));
         serverRead();
     } else {
         m_connectedToServer = false;
@@ -169,9 +169,9 @@ void CDataCenter::onServerRead(const shared_ptr<boost::asio::streambuf>& buffer,
             iss >> command;
             if (command == "tradeAnswer") {
                 const int transactionId = tradeAnswerProcess(iss);
-                m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, message + '\n')));
+                m_strand.dispatch(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, message + '\n'));
                 string processedMessage("processed " + std::to_string(transactionId) + "\n");
-                m_socket->get_io_service().post(m_strand.wrap(bind(&CDataCenter::pushServerMessage, this, processedMessage)));
+                m_strand.dispatch(bind(&CDataCenter::pushServerMessage, this, processedMessage));
             }
         }
         serverRead();
@@ -188,7 +188,7 @@ void CDataCenter::pushServerMessage(const string& message) {
     const bool empty = m_serverCommands.empty();
     m_serverCommands.push(message);
     if (empty) {
-        m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendCommandToServer, this)));
+        m_strand.dispatch(std::bind(&CDataCenter::sendCommandToServer, this));
     }
 }
 
@@ -341,7 +341,7 @@ void CDataCenter::changeBalance(int sum) {
         );
         mylog(INFO, "Your current balance:", m_balance, ". In processing:", totalTransactionSum);
     }
-    m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, setBalanceCommand)));
+    m_strand.dispatch(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, setBalanceCommand));
 }
 
 void CDataCenter::makeTrade(int sum) {
@@ -365,9 +365,9 @@ void CDataCenter::makeTrade(int sum) {
     }
     mylog(INFO, "During trade operation", sum, "booked. Transaction id =", m_lastTransactionId);
     string makeTradeCommand("makeTrade " + std::to_string(m_lastTransactionId) + " " + std::to_string(sum) + '\n');
-    m_socket->get_io_service().post(m_strand.wrap(bind(&CDataCenter::pushServerMessage, this, makeTradeCommand)));
+    m_strand.dispatch(bind(&CDataCenter::pushServerMessage, this, makeTradeCommand));
     const string bookBalanceCommand("book " + std::to_string(m_lastTransactionId) + " " + std::to_string(sum) + '\n');
-    m_socket->get_io_service().post(m_strand.wrap(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, bookBalanceCommand)));
+    m_strand.dispatch(std::bind(&CDataCenter::sendReserveDatacentersCommand, this, bookBalanceCommand));
 }
 
 /////////////////////////////////////////////////////////////////////////

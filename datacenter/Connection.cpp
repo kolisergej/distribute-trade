@@ -1,8 +1,8 @@
 #include "Connection.h"
 
-shared_ptr<Connection> Connection::createConnection(io_service& service)
+shared_ptr<Connection> Connection::createConnection(io_service& service, boost::asio::strand& strand)
 {
-    shared_ptr<Connection> connection(new Connection(service));
+    shared_ptr<Connection> connection(new Connection(service, strand));
     return connection;
 }
 
@@ -13,10 +13,10 @@ void Connection::start() {
 void Connection::read() {
     shared_ptr<boost::asio::streambuf> buffer = make_shared<boost::asio::streambuf>();
     async_read_until(m_socket, *buffer, '\n', bind(&Connection::onDatacenterRead,
-                                                                shared_from_this(),
-                                                                buffer,
-                                                                _1
-                                                                ));
+                                                   shared_from_this(),
+                                                   buffer,
+                                                   _1
+                                                   ));
 }
 
 void Connection::onDatacenterRead(const shared_ptr<boost::asio::streambuf>& buffer, const bs::error_code& er) {
@@ -33,24 +33,18 @@ boost::asio::ip::tcp::socket& Connection::socket() {
     return m_socket;
 }
 
-Connection::Connection(io_service& service):
-    m_socket(service)
+Connection::Connection(io_service& service, boost::asio::strand& strand):
+    m_socket(service),
+    m_strand(strand)
 {
 }
 
 void Connection::pushCommandToReserve(const string& command) {
-    // We can avoid mutex here, if not call this function from anywhere
-    lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
     const bool empty = m_sendReserveDatacentersCommands.empty();
     m_sendReserveDatacentersCommands.push(command);
     if (empty) {
-        m_socket.get_io_service().post(bind(&Connection::onPushCommandToReserve, shared_from_this()));
+        m_strand.dispatch(bind(&Connection::sendCommandToReserve, shared_from_this()));
     }
-}
-
-void Connection::onPushCommandToReserve() {
-    lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
-    sendCommandToReserve();
 }
 
 void Connection::sendCommandToReserve() {
@@ -58,16 +52,15 @@ void Connection::sendCommandToReserve() {
     std::shared_ptr<string> reserveDatacanterWriteBuffer = std::make_shared<string>(command);
     mylog(DEBUG, "Sending", command, "to reserve datacenter");
     m_sendReserveDatacentersCommands.pop();
-    async_write(m_socket, boost::asio::buffer(*reserveDatacanterWriteBuffer), bind(&Connection::onSendCommandToReserve,
-                                                                                   shared_from_this(),
-                                                                                   reserveDatacanterWriteBuffer,
-                                                                                   _1));
+    async_write(m_socket, boost::asio::buffer(*reserveDatacanterWriteBuffer), m_strand.wrap(bind(&Connection::onSendCommandToReserve,
+                                                                                                 shared_from_this(),
+                                                                                                 reserveDatacanterWriteBuffer,
+                                                                                                 _1)));
 }
 
 void Connection::onSendCommandToReserve(const std::shared_ptr<string>& buffer, const bs::error_code& er) {
     (void)buffer;
     if (!er) {
-        lock_guard<mutex> lock(m_sendReserveDatacentersMutex);
         if (m_sendReserveDatacentersCommands.empty()) {
             return;
         }
